@@ -22,6 +22,7 @@ local player = vayn.player
 local target = vayn.target
 local assassination = myProject.spellBook.rogue.assassination
 ```
+
 This gives you access to player and target without having to access the vayn table everytime, also returning early if the containing code is not for the class that is currently logged in saves some bloat.
 
 
@@ -197,13 +198,18 @@ Pass an `attributes` table to override any of these at creation time or later as
 
 ### Properties (read-only)
 
-Accessed without parentheses via `propertyMap`:
+Accessed without parentheses:
 
 ```lua
 spell.cd
 spell.known
 spell.range
 spell.charges
+spell.chargesFrac
+spell.nextChargeCD
+spell.fullRechargeTime
+spell.curseDispell
+spell.magicDispell
 ```
 
 ### Methods (callable)
@@ -258,7 +264,7 @@ When `Cast(unit, overwrites)` receives a non-unit first argument, it treats that
 | Property | Returns |
 |----------|---------|
 | `curseDispell` | Spell ID is in `vayn.ids.dispellSpellsCurse` |
-| `dispellMagic` | Spell ID is in `vayn.ids.dispellSpellsMagic` |
+| `magicDispell` | Spell ID is in `vayn.ids.dispellSpellsMagic` |
 | `poisonDispell` | Spell ID is in `vayn.ids.dispellSpellsPoison` |
 
 ---
@@ -298,9 +304,9 @@ Registers a function invoked when the spell is called. If `name` is omitted, reg
 
 Bulk-registers a table of `{ name = fn, ... }`.
 
-### `spell(name?, ...)`
 
 Callbacks are smart, they only run if the spell is even usable.
+
 ---
 
 ## Casting
@@ -423,7 +429,7 @@ cd
 curseDispell
 current
 damage
-dispellMagic
+magicDispell
 effect
 face
 fullRechargeTime
