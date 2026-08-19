@@ -23,7 +23,7 @@ Check the spells segment later on for more info about creating spell objects.
 
 # Callbacks
 So we need some logic to decide what to do and when to cast a certain spell, right?
-Thats what callbacks are for, we register our logic with the spell object our final decision will most likely always be calling :Cast() on a certain spell. (Do you see the : instead of . ? Its something vayn does to symbolise that this function is DOING something inside the game, not just giving you information.)
+Thats what callbacks are for, we register our logic with the spell object our final decision will most likely always be calling :Cast() on a certain spell.
 
 ```lua
 local assassination = myProject.spellBook.rogue.assassination
@@ -64,7 +64,7 @@ The answer is simple, callbacks are checked first if the spell they are created 
 
 # Spell API
 
-The `spell` module (`frame/spell/spell.lua`) wraps WoW spells into **spell objects** used by rotation callbacks. Each spell knows its cooldown, range, cast rules, and optional AoE placement logic.
+The `spell` module wraps WoW spells into **spell objects** used by rotation callbacks. Each spell knows its cooldown, range, cast rules, and optional AoE placement logic.
 
 Spell objects are created via `vayn.spell:New(spellID, attributes)` and invoked from actor callbacks with `spell()` or `spell("callbackName")`.
 
