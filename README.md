@@ -385,8 +385,6 @@ Finds an optimal ground position and casts there.
 | `ignoreEnemies` / `ignoreFriends` | `false` | Limit which unit lists are counted |
 | `filter` | nil | `(unit) → bool` hit filter |
 
-Results are cached for 0.5s under `"SmartAoEPosition_<name>"`.
-
 ### `spell:AoECast(position, overwrites?)`
 Raw spell cast at given position.
 
@@ -536,41 +534,10 @@ end
 
 ---
 
-## Construction
-
-### `unit:New(object)`
-
-Creates a new unit wrapper around a WGG object handle, WoW unit token (`"player"`, `"target"`, …), or GUID string.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `object` | any | Underlying WGG object handle |
-| `wgg_guid` | string | WGG object GUID |
-| `wow_guid` | string | WoW API GUID (when available) |
-| `creationTime` | number | `vayn.time` when the unit was created |
-| `name` | string | Cached object name |
-| `buffs` / `debuffs` / `hiddenAuras` | table | Aura caches with `instanceLookup` and `lastRefresh` |
-| `cooldowns` | table | Tracked spell cooldown timestamps |
-| `lockouts` | table | School lockout tracking |
-| `*DRValue` / `last*DR` | number | Diminishing-return state per CC category |
-
-### Metamethods
-
-| Method | Behavior |
-|--------|----------|
-| `unit:__eq(other)` | Equality via `self.isUnit(other)` |
-| `unit:__tostring()` | Returns `"unit(<name>)"` |
-
----
-
 ## Access model
-
-Unit members are resolved through a custom `__index` metamethod. There are three access styles:
+There are three access styles:
 
 ### 1. Properties (read-only)
-
-Accessed without parentheses. Implemented in `propertyMap`.
-
 ```lua
 vayn.target.hp
 vayn.target.enemy
@@ -597,17 +564,8 @@ Defined on the unit table itself:
 
 | Method | Description |
 |--------|-------------|
-| `unit:New(object)` | Constructor |
 | `unit:Interact()` | Calls `ObjectInteract` if the unit exists |
 | `unit:SetTarget()` | Targets the unit via `TargetUnit` if not already targeted |
-
-### Special resolved keys
-
-| Key | Description |
-|-----|-------------|
-| `guid` / `wgg_guid` / `wow_guid` | GUID accessors with lazy caching |
-| `omToken` | WGG object token used for WoW API calls |
-
 ---
 
 ## Identity & existence
@@ -625,9 +583,7 @@ Defined on the unit table itself:
 | `uptime` / `existsSince` | Seconds since unit wrapper was created |
 | `player` | Whether the unit is a player character |
 | `pet` / `battlePet` / `totem` | Pet-related checks |
-| `dummy` | Whether NPC ID is in `vayn.ids.dummies` |
 | `level` | Unit level |
-
 ---
 
 ## Faction & targeting
@@ -799,9 +755,6 @@ Many aliases exist (see [Aliases](#aliases)).
 ---
 
 ## Auras
-
-Aura lookups are cached per unit with a randomized refresh interval (`auraCacheTime`). Buff/debuff scans use `AuraUtil.ForEachAura`; hidden auras use `WGG.GetAllPrivateAuras`.
-
 ### Methods
 
 | Method | Signature | Returns |
@@ -1550,22 +1503,9 @@ v2Attackers
 
 ---
 
-## Related modules
-
-| Module | Role |
-|--------|------|
-| `frame/unitManager.lua` | Unit cache, GUID/token resolution, `get()` |
-| `frame/lists.lua` | Enemy/friendly lists yielding units |
-| `vayn.aura` | Aura object returned by `buff()` / `debuff()` |
-| `vayn.ids` | CC, immunity, spec, and tracked CD tables |
-
----
-
 ## Notes
 
 - **Player-only APIs** (`gcd`, `mounted`, `powerRegen`) call `vayn.error` or `error()` when used on non-player units.
-- **Secret values**: WoW secret values/tables are unwrapped via `vayn.unwrap` or rejected with a console warning.
-- **Caching**: Aura and DR lookups use `vayn.cache` with GUID-scoped keys to avoid repeated API scans within a frame.
 - **Non-existent objects**: The `__index` fallback returns safe defaults so rotation code can read properties without nil-checking every field.
 
 
