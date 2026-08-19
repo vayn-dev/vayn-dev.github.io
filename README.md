@@ -367,12 +367,8 @@ Important pre-cast attributes include:
 |---|---|
 | `stopMoving` | Stops movement before casting. |
 | `ignoreCasting` | Stops the current cast. |
-| `castByID` | Uses `CastSpellByID`. |
+| `castByID` | Casts spell via ID. |
 | `name` | Uses an alternate spell name. |
-
-Without `castByID`, casting normally uses `vayn.CastSpellByName()`.
-
-Cast attempts are rate-limited per spell ID with an internal delay of approximately `0.25–0.50` seconds.
 
 Returns `true` on a cast attempt and `false`/`nil` on failure.
 
