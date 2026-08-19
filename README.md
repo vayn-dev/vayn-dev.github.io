@@ -473,8 +473,10 @@ For failed `Castable()` checks:
 vayn.debug = true
 ```
 
-`vayn.debug` can also accept a search string.
-
+`vayn.debug` also accepts a search string to filter the results.
+```lua
+vayn.debug = "Eviscerate"
+```
 
 # Unit API
 
@@ -551,8 +553,6 @@ Missing units return safe method stubs where applicable, such as `buffRemains()`
 | `alive` / `dead` | Life state. Feign Death is treated as alive. |
 | `name` | Object name, or `"Unknown"`. |
 | `id` | NPC/object ID. |
-| `guid` | WGG GUID. |
-| `wowguid` | WOW GUID. |
 | `type` / `typeName` | Object type index and label. |
 | `omToken` | WoW object token. |
 | `uptime` / `existsSince` | Time since the wrapper was created. |
@@ -578,7 +578,7 @@ You can chain these like:
     if someUnit.target.los
 ```
 
-### Methods
+## Comparison, Positions, Los
 
 | Method | Description |
 |---|---|
@@ -588,11 +588,6 @@ You can chain these like:
 | `losToPosition(pos)` / `losToPositionRaw(pos)` | Line of sight to `{x, y, z}`. |
 | `losOf(other)` | Inverse of `other.losTo(self)`. |
 | `predictLos(other, time)` | Predicts line of sight after `time` seconds. |
-
-## Position & Movement
-
-| Property | Description |
-|---|---|
 | `position` | `{x, y, z}` position. |
 | `positionRaw` | Raw position from `ObjectPosition`. |
 | `x` / `y` / `z` | Individual coordinates. |
@@ -608,12 +603,6 @@ You can chain these like:
 | `timeToUnit` / `timeToUnitRaw` | Estimated intercept time. |
 | `trapTravelTime` | Estimated trap travel time. |
 | `averageRange` | Spec-based average engagement range. |
-
-
-### Methods
-
-| Method | Description |
-|---|---|
 | `distanceTo(unit)` / `distance2DTo(unit)` | Distance to another unit. |
 | `distanceToPosition(pos)` / `distance2DToPosition(pos)` | Distance to a position. |
 | `predictDistance(time)` / `predictDistance2D(time)` | Predicted distance after `time`. |
@@ -621,7 +610,7 @@ You can chain these like:
 | `predictPosition(time)` | Predicted `{x, y, z}` position. |
 | `movingTowards(unit)` / `movingAwayFrom(unit)` | Movement direction relative to a unit. |
 | `hasMovementFlag(flag)` | Tests a `MovementFlags` value. |
-| `facing(unit, options?)` | Checks the facing cone; default is 180°. |
+| `facing(unit, angle?)` | Checks the facing cone; default is 180°. |
 | `facing45(unit)` / `facing90(unit)` | 45° / 90° facing checks. |
 | `behind(unit)` | Checks whether this unit is behind another. |
 | `angleTo(unit)` | Angle to another unit. |
@@ -658,15 +647,10 @@ You can chain these like:
 | `lastCast` | Last recorded cast ID. |
 | `gcd` | Remaining GCD; player only. |
 | `maxGCD` | Maximum GCD for the unit's spec/haste. |
-
-### Methods
-
-| Method | Description |
-|---|---|
 | `recentlyCast(spellID, window?)` | Whether the spell was cast within the window. |
 | `recentlyCastTime(spellID)` | Time since the spell was cast. |
 | `cooldown(spellID)` | Remaining tracked cooldown. |
-| `canCastOverlappingSpell()` / `setOverlappingSpell()` | Helpers for overlapping cast windows. |
+
 
 ## Auras
 
@@ -735,7 +719,7 @@ Immunity properties combine aura checks, DR state, and untouchable CC debuffs. I
 | `untouchableCC` | Untouchable CC debuff. |
 | `bccImmunity` | BCC immunity. (Spells like Sacrifice will break our bcc, so we consider the unit immune to bcc) |
 
-### Common Unit Properties
+## Common Unit Properties
 
 | Property | Description |
 |---|---|
@@ -747,8 +731,6 @@ Immunity properties combine aura checks, DR state, and untouchable CC debuffs. I
 | `purgable` | Stealable buff. |
 | `ams` | Anti-Magic Shell. |
 | `smokeBomb` / `speared` / `searingGlare` | pvp-specific debuff checks. |
-
-
 
 ## Power & Resources
 
@@ -862,7 +844,6 @@ Depending on the option, it returns a count or without anything passed to the fu
 | `hasTalent(talentID)` | Checks whether the unit has a talent. (only player) |
 | `hasTotem(totemID)` | Checks whether the unit has a totem. |
 
-`talent` is an alias for `hasTalent`.
 
 ## Aliases
 
@@ -882,11 +863,6 @@ Aliases exist for shorthand and backwards compatibility. They behave the same as
 | `source` | `creator` |
 | `isFC` / `isDummy` | `fc` / `dummy` |
 | `dk` / `frostdk` / `sub` / `disc` | Class/spec shortcuts |
-
-### Method aliases
-
-| Alias | Canonical |
-|---|---|
 | `distanceToUnit` | `distanceTo` |
 | `distanceToPoint` | `distanceToPosition` |
 | `movingTo` / `isMovingTowards` | `movingTowards` |
@@ -894,7 +870,6 @@ Aliases exist for shorthand and backwards compatibility. They behave the same as
 | `v2attackers` | `v2Attackers` |
 | `predictLoS` | `predictLos` |
 
-Accessing an unknown property throws `Unit property <name> not found`.
 
 ## Player-only APIs
 
