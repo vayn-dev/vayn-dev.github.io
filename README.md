@@ -62,6 +62,20 @@ Registering an actor requires 2 arguments, the specID for which your rotation is
 Why shouldn't I create all the logic in the actor instead of in the callbacks? 
 The answer is simple, callbacks are checked first if the spell they are created for is even ready / castable before running the logic inside. So in complex rotations you gain a performance increase and its more readable aswell.
 
+# Static objects
+There are a few static objects we can use inside of vayn. 
+
+vayn.player always references the player object
+vayn.target always referecnes your current target
+vayn.enemyHealer references the first enemy healer it can find, useful in arena - would not use it inside of battlegrounds
+
+
+# Unit Lists
+Like static objects there are unit lists that give you access to units that are not your current target or any other object referencable by static objects.
+
+vayn.enemies (filtered for only players in pvp enviroment)
+
+
 # Spell API
 
 The `spell` module wraps WoW spells into **spell objects** used by rotation callbacks. Each spell knows its cooldown, range, cast rules, and optional AoE placement logic.
@@ -136,7 +150,6 @@ ignoreLoS = false
 ignoreFacing = false
 ignoreDirectionalImmunity = false
 ignorePreCast = false
-cancelCatForm = false
 ignoreEnemies = false
 face = false
 stopMoving = false
