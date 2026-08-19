@@ -1,3 +1,67 @@
+# File Structure
+The only file that is needed is your custom Loadorder in /vayn/classes/class_index.lua.
+Here you determine which files will be loaded.
+
+Every file you load gets passed 3 Tables. The original Unlocker table containing functions supplied by the unlocker, the vayn table, giving you access to all functions inside the framework and a empty table that is shared across all your files.
+
+# Spellbook
+Vayn itself contains a spell book already, used for the integrated rotations. You can create your own:
+
+```lua
+local WGG, vayn, myProject = ...
+
+myProject.spellBook = {
+    rogue = {
+        assasination = {
+            eviscerate = vayn.spell:New(12345)
+        }
+    }
+}
+```
+You could also only do one layer, or even more splitting into categories like cc, damage, defensives and so on.
+Check the spells segment later on for more info about creating spell objects.
+
+# Callbacks
+So we need some logic to decide what to do and when to cast a certain spell, right?
+Thats what callbacks are for, we register our logic with the spell object our final decision will most likely always be calling :Cast() on a certain spell. (Do you see the : instead of . ? Its something vayn does to symbolise that this function is DOING something inside the game, not just giving you information.)
+
+```lua
+local assassination = myProject.spellBook.rogue.assassination
+local target = vayn.target
+local player = vayn.player
+
+assassination.eviscerate:Callback("5ComboPoints", function(spell)
+    if player.cp < 5 then return end
+    return spell:Cast(target)
+end)
+```
+You should always return out of the callback function. This tells the framework that a cast was sucessful (if it passed all checks that are hidden inside :Cast()) and no more logic needs to be performed this iteration.
+
+You can also chain these returns with alerts. (Alerts always return true)
+
+```lua
+assassination.eviscerate:Callback("5ComboPoints", function(spell)
+    if player.cp < 5 then return end
+    return spell:Cast(target) and vayn.alert(spell.name, spell.id)
+end)
+```
+
+# Rotation
+The rotation is performed by an actor, its called "sync" in vayn. Here you call the spell objects, telling them wich callback you want to execute. (If you leave this empty, the default callback will be used. Its the same like creating a callback without giving it a name)
+
+
+```lua
+local assassination = myProject.spellBook.rogue.assassination
+vayn.sync(671, function()
+    assassination.eviscerate("5ComboPoints")
+end)
+```
+
+Registering an actor requires 2 arguments, the specID for which your rotation is created and also the function that gets called on repeat. Inside this function you call the spell objects diretly, passing the Callbackname.
+
+Why shouldn't I create all the logic in the actor instead of in the callbacks? 
+The answer is simple, callbacks are checked first if the spell they are created for is even ready / castable before running the logic inside. So in complex rotations you gain a performance increase and its more readable aswell.
+
 # Spell API
 
 The `spell` module (`frame/spell/spell.lua`) wraps WoW spells into **spell objects** used by rotation callbacks. Each spell knows its cooldown, range, cast rules, and optional AoE placement logic.
