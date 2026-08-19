@@ -23,7 +23,7 @@ Each loaded file receives three tables:
 
 1. `WGG` — the original Unlocker table and its supplied functions.
 2. `vayn` — access to the Vayn framework.
-3. Your project table — shared by all files in the project.
+3. `Your project table` — shared by all files in the project.
 
 ### File Headers
 
@@ -79,7 +79,7 @@ assassination.eviscerate:Callback("5ComboPoints", function(spell)
 end)
 ```
 
-Callbacks should return the result of the action. A successful `Cast()` tells the framework that the rotation has performed an action and no further logic should run for that iteration.
+Callbacks should always return the result of the action. A successful `Cast()` tells the framework that the rotation has performed an action and no further logic should run for that iteration.
 
 Alerts can be chained onto the return value:
 
@@ -113,7 +113,10 @@ Vayn exposes several commonly used unit objects directly:
 |---|---|
 | `vayn.player` | The player unit. |
 | `vayn.target` | The current target. |
+| `vayn.focus` | The current focus. |
+| `vayn.healer` | The first friendly healer found. Useful in arena; not recommended for battleground logic. |
 | `vayn.enemyHealer` | The first enemy healer found. Useful in arena; not recommended for battleground logic. |
+| `vayn.pet` | The current player pet. |
 
 ### Unit Lists
 
@@ -121,15 +124,41 @@ Unit lists provide access to units that are not exposed through the static objec
 
 | List | Description |
 |---|---|
-| `vayn.enemies` | Enemy players in the PvP environment. |
+| `vayn.enemies` | all enemies in OM, limited to players in the PvP environment |
+| `vayn.allEnemies` | not filtered list of enemies |
+| `vayn.group` | party or raidmembers, if not in raid all friendly units |
+| `vayn.triggers` | area triggers |
+| `vayn.totems` | enemy totems |
+| `vayn.friendlyTotems` | friendly totems |
+| `vayn.pets` | enemy pets |
+| `vayn.friendlyPets` | friendly pets |
+| `vayn.allObjects` | everything in OM |
 
-Unit lists support methods such as `within()` and `find()`.
 
+### Methods
+| List | Description |
+|---|---|
+| `.within(range)` | filtered by `range` |
+| `.filter(function(unit))` | filtered by `function` |
+| `.sort(function(a, b))` | sort the list |
+| `.lowest` | lowest hp unit |
+| `.highest` | lowest hp unit |
+| `.find(unit)` | filtered by `function`, only returning the first viable unit |
+| `.loop(function(unit))` | perform function for every unit |
+| `.stomp(function(unit, unitUptime))` | same as loop, also passing uptime to your function |
+| `.around(unit, range, function())` | number of units around a certain unit, filtered via function |
+| `.aroundPosition(unit, range, function())` | number of units around a certain position, filtered via function  |
+| `.count` | number of units |
+
+Methods returning a viable group (not a single unit) can be chained endlessly.
 ```lua
 local enemy = vayn.enemies
     .within(40)
+    .filter(function(unit)
+        return unit.rogue
+    end)
     .find(function(unit)
-        return unit.viableEnemy
+        return not unit.cc
     end)
 ```
 
@@ -271,7 +300,7 @@ Useful groups include:
 | `minRange` | Minimum range from spell info. |
 | `maxRange` | Maximum range from spell info. |
 | `range` | Effective cast range, including player combat reach. Falls back to `vayn.player.meleeRange` when spell ranges are zero. |
-| `castLength` | Alias for `castTime`. |
+| `castTime` | Duration a cast needs to complete |
 
 ### Dispel Flags
 
@@ -336,9 +365,7 @@ Important pre-cast attributes include:
 | Attribute | Behaviour |
 |---|---|
 | `stopMoving` | Stops movement before casting. |
-| `jump` / `jumpOrMove` | Uses `vayn:JumpApex()`. |
 | `ignoreCasting` | Stops the current cast. |
-| `cancelCatForm` | Cancels Cat Form when rooted/slowed. |
 | `castByID` | Uses `CastSpellByID`. |
 | `name` | Uses an alternate spell name. |
 
@@ -530,6 +557,7 @@ Missing units return safe method stubs where applicable, such as `buffRemains()`
 | `name` | Object name, or `"Unknown"`. |
 | `id` | NPC/object ID. |
 | `guid` | WGG GUID. |
+| `wowguid` | WOW GUID. |
 | `type` / `typeName` | Object type index and label. |
 | `omToken` | WoW object token. |
 | `uptime` / `existsSince` | Time since the wrapper was created. |
@@ -549,18 +577,21 @@ Missing units return safe method stubs where applicable, such as `buffRemains()`
 | `combat` / `combatTime` | Combat state and duration. |
 | `los` | Line of sight from the player. |
 
+You can chain these like:
+```lua
+    local someUnit = vayn.enemies.lowest
+    if someUnit.target.los
+```
+
 ### Methods
 
 | Method | Description |
 |---|---|
 | `isUnit(other)` | Compares two units. |
-| `isTarget()` | Checks whether this is the current target. |
 | `enemyTo(other)` / `friendTo(other)` | Faction relative to another unit. |
 | `losTo(other)` / `losToRaw(other)` | Line of sight to another unit. |
 | `losToPosition(pos)` / `losToPositionRaw(pos)` | Line of sight to `{x, y, z}`. |
 | `losOf(other)` | Inverse of `other.losTo(self)`. |
-| `icewallObstructingLosTo(unit)` | Checks for an Ice Wall obstruction. |
-| `smokebombObstructingLosTo(unit)` | Checks for a Smoke Bomb obstruction. |
 | `predictLos(other, time)` | Predicts line of sight after `time` seconds. |
 
 ## Position & Movement
@@ -580,16 +611,9 @@ Missing units return safe method stubs where applicable, such as `buffRemains()`
 | `timeStandingStill` | Time spent standing still. |
 | `altitude` | Height above ground. |
 | `timeToUnit` / `timeToUnitRaw` | Estimated intercept time. |
-| `trapTravelTime` | Estimated trap travel time at 19.281 yds/s. |
+| `trapTravelTime` | Estimated trap travel time. |
 | `averageRange` | Spec-based average engagement range. |
 
-### Movement Flags
-
-Movement flags include:
-
-`movingForward`, `movingBackward`, `stravingLeft`, `stravingRight`, `turningLeft`, `turningRight`, `falling`, `fallingFar`, `swimming`, `flying`, `canFly`, `ascending`, `descending`, `levitating`, `onTransport`
-
-Most also have a corresponding `*Pending` variant.
 
 ### Methods
 
@@ -630,7 +654,6 @@ local distance = player.distanceToPosition({
 | `healthMissing` / `hpMissing` / `realHealthMissing` | Missing-health values. |
 | `healAbsorb` | Total heal absorption. |
 | `absorb` | Total damage absorption. |
-| `guardianSpirit` | Guardian Spirit state with heal-event tracking. |
 
 ## Casting & Channels
 
@@ -681,11 +704,10 @@ CC categories also expose matching `*Remains` and `*Uptime` properties and, wher
 
 DR values are tracked by category, including `stunDR`, `incapDR`, `disorientDR`, `fearDR`, `horrorDR`, `cycloneDR`, `disarmDR`, `rootDR`, `silenceDR`, and `knockbackDR`.
 
-Values follow the WoW DR tiers: `1 → 0.5 → 0.25 → 0`.
+Values follow the WoW DR tiers: `1 → 0.5 → 0`.
 
 | Property | Description |
 |---|---|
-| `stunBreak` | Whether a stun break effect is active. |
 | `safe` | Whether the unit is considered safe due to major defensives, CC, etc. |
 
 ## Immunities
@@ -705,7 +727,20 @@ Immunity properties combine aura checks, DR state, and untouchable CC debuffs. I
 | `silenceImmunity` / `interruptImmunity` / `knockbackImmunity` | Cast/interrupt immunities. |
 | `healImmunity` / `beneficialImmunity` | Healing/beneficial immunities. |
 | `untouchableCC` | Untouchable CC debuff. |
-| `bccImmunity` | BCC immunity. |
+| `bccImmunity` | BCC immunity. (Spells like Sacrifice will break our bcc, so we consider the unit immune to bcc) |
+
+### Common Unit Properties
+
+| Property | Description |
+|---|---|
+| `stealth` | Stealth buff. |
+| `bloodlust` | Bloodlust/Heroism. |
+| `trinket` / `trinketRemains` | PvP trinket state. |
+| `humanRacial` / `humanRacialRemains` | Will to Survive tracking. |
+| `defensiveCDs` / `majorDefensiveCDs` / `offensiveCDs` | Cooldown aura groups. |
+| `purgable` | Stealable buff. |
+| `ams` | Anti-Magic Shell. |
+| `smokeBomb` / `speared` / `searingGlare` | pvp-specific debuff checks. |
 
 ## Auras
 
@@ -727,21 +762,8 @@ Immunity properties combine aura checks, DR state, and untouchable CC debuffs. I
 | `hiddenAuraFrom(table)` | First matching hidden aura. |
 | `hiddenAuraRemains(id)` / `hiddenAuraUptime(id)` | Hidden-aura timing helpers. |
 
-Aura objects created by `vayn.aura:New` expose properties such as `.remains`, `.uptime`, `.stacks`, `.creator`, and `.id`.
+Aura objects expose properties such as `.remains`, `.uptime`, `.stacks`, `.creator`, and `.id`.
 
-### Common Aura Properties
-
-| Property | Description |
-|---|---|
-| `stealth` | Stealth buff. |
-| `bloodlust` | Bloodlust/Heroism. |
-| `trinket` / `trinketRemains` | PvP trinket state. |
-| `humanRacial` / `humanRacialRemains` | Will to Survive tracking. |
-| `defensiveCDs` / `majorDefensiveCDs` / `offensiveCDs` | Cooldown aura groups. |
-| `purgable` | Stealable buff. |
-| `dotted` | Bleed/DoT from `vayn.ids`. |
-| `ams` | Anti-Magic Shell. |
-| `smokeBomb` / `speared` / `searingGlare` | Arena-specific debuff checks. |
 
 ## Power & Resources
 
@@ -791,13 +813,12 @@ Boolean class properties include:
 
 ### Specialization
 
-Every PvP-relevant specialization has a boolean property such as `armsWarrior`, `frostMage`, `restorationDruid`, `subtletyRogue`, and `havocDemonhunter`.
+Every specialization has a boolean property such as `armsWarrior`, `frostMage`, `restorationDruid`, `subtletyRogue`, and `havocDemonhunter`.
 
 | Property | Description |
 |---|---|
 | `specID` | Specialization ID. |
 | `specName` / `specNameShort` | Full and short specialization names. |
-| `specColor` | Specialization color from `vayn.ids.specs`. |
 
 ### Role
 
@@ -807,7 +828,6 @@ Every PvP-relevant specialization has a boolean property such as `armsWarrior`, 
 | `melee` / `ranged` / `caster` | Range archetype. |
 | `magicDPS` / `physicalDPS` | Damage type. |
 | `healerRole` / `damageRole` / `tankRole` | WoW group role. |
-| `inGroup` / `raid` / `party` | Group membership. |
 
 ### Race
 
@@ -836,7 +856,7 @@ Returns detailed attacker counts. Options include:
 - `"cooldowns"`
 - `"magic"`
 
-Depending on the option, it returns a count or `(melee, ranged, cds, total)`.
+Depending on the option, it returns a count or without anything passed to the function `(melee, ranged, cds, total)`.
 
 ## World Objects
 
@@ -848,14 +868,13 @@ Depending on the option, it returns a count or `(melee, ranged, cds, total)`.
 | `tapDenied` | Mob tap is denied. |
 | `creatureType` | Creature type such as `"Humanoid"` or `"Beast"`. |
 | `humanoid` / `beast` / `critter` / `undead` | Creature-type shortcuts. |
-| `outdoors` | Placeholder; currently always `false`. |
-| `locked` | Placeholder; currently always `false`. |
+| `outdoors` | Placeholder; currently always `false`, till we get an implementation from WGG |
 
 ## Talents & Totems
 
 | Method | Description |
 |---|---|
-| `hasTalent(talentID)` | Checks whether the unit has a talent. |
+| `hasTalent(talentID)` | Checks whether the unit has a talent. (only player) |
 | `hasTotem(totemID)` | Checks whether the unit has a totem. |
 
 `talent` is an alias for `hasTalent`.
@@ -894,9 +913,9 @@ Accessing an unknown property throws `Unit property <name> not found`.
 
 ## Player-only APIs
 
-Some APIs are only valid on the player, including `gcd`, `mounted`, and power regeneration properties. Calling these on non-player units can call `vayn.error` or `error()`.
+Some APIs are only valid on vayn.player, including `gcd`, `mounted`, and power regeneration properties. Calling these on other units will result in an lua error.
 
-## Missing Units
+## Default returns
 
 The unit metatable provides safe defaults for many properties when an object no longer exists, allowing rotation code to avoid repetitive nil checks.
 
