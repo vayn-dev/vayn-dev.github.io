@@ -1567,3 +1567,52 @@ v2Attackers
 - **Secret values**: WoW secret values/tables are unwrapped via `vayn.unwrap` or rejected with a console warning.
 - **Caching**: Aura and DR lookups use `vayn.cache` with GUID-scoped keys to avoid repeated API scans within a frame.
 - **Non-existent objects**: The `__index` fallback returns safe defaults so rotation code can read properties without nil-checking every field.
+
+
+# Macro System
+You can create custom macros. These are just flags that get set via slashcommand for X amount of seconds.
+
+Registering a macro for 1 Second:
+```lua
+vayn.RegisterMacro("burst", 1)
+```
+
+Using inside of Callbacks:
+```lua
+if not vayn.MacrosQueued["burst"] then return end
+```
+
+Using the Macro ingame:
+```lua
+/username burst
+```
+
+# Humanization
+You can create delays using the integrated delay system:
+
+local delay = vayn.delay(0.2, 0.4, 5)
+
+would create a delay between 0.2 and 0.4 seconds which changes every 5 seconds.
+
+To use it in your code:
+```lua
+if target.buffUptime(123) < delay.now then return end
+```
+
+As alternative there is also a debounce function available:
+
+```lua
+return vayn.debounce(spell.name, vayn.around3.now, 5, function() return spell:Cast(player) end)
+```
+
+It takes 4 arguments:
+
+key - unique string you would like to use, can be anything but shouldn't be reused.
+min - minimum time that should have passed before executing the function.
+reset - timer where the debounce function resets itself and forgets it ever existed.
+func - function that gets executed.
+```lua
+vayn.debounce(key, min, reset, func)
+```
+
+Sometimes this approach is easier, because it does not care for the conditions, but rather tracks time from when the decision was first viable to real execution.
