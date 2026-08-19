@@ -1,19 +1,51 @@
-#Unit
+# Unit
 
-unit.name
-returns the name of the unit
+## `unit.name`
 
-unit.id
-returns ID of the unit
+Returns the name of the unit.
 
-unit.distance
-returns the distance to the player
+## `unit.id`
 
-unit.distanceTo(other)
-returns the distance of unit to the unit passed as argument
+Returns the ID of the unit.
 
-#Distance to Position
-unit.distanceToPosition(position)
-returns distance to a given position. Position is a table containg x,y,z.
+## `unit.distance`
 
-player.distanceToPosition({x = 1, y = 100, z = 300})
+Returns the distance from the unit to the player.
+
+## `unit.distanceTo(other)`
+
+Returns the distance from the unit to another unit.
+
+**Parameters:**
+
+* `other` — The unit to measure the distance to.
+
+---
+
+# Distance to Position
+
+## `unit.distanceToPosition(position)`
+
+Returns the distance from the unit to a given position.
+
+The `position` parameter is a table containing `x`, `y`, and `z` coordinates.
+
+### Example
+
+```lua
+player.distanceToPosition({
+    x = 1,
+    y = 100,
+    z = 300
+})
+```
+
+**Position format:**
+
+```lua
+{
+    x = 1,
+    y = 100,
+    z = 300
+}
+```
