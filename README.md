@@ -1041,8 +1041,8 @@ vayn.debounce(key, min, reset, func)
 
 ## Integrated Helper Functions
 
-| Function                                    | Description                                               |
-|----------------------------------------------|-----------------------------------------------------------|
+| Function | Description |
+|---|---|
 | `vayn:SmartInterrupt(spell)`                 | Intelligently interrupts the enemy's spell cast.          |
 | `vayn:GetInterruptUnit(spell)`               | Finds the best enemy unit to interrupt with given spell.  |
 | `vayn:SmartAutoHit()`                        | Activates auto-attack/hit on an appropriate target.       |
@@ -1059,8 +1059,8 @@ vayn.debounce(key, min, reset, func)
 `vayn.addUpdateCallback(function())` runs before any rotation actor gets invoked, useful for running point based object loops and caching the result for that frame
 
 ## Instances
-| Instance         | Description                           |
-|------------------|---------------------------------------|
+| Function | Description |
+|---|---|
 | `vayn.arena`         | True in any arena match.            |
 | `vayn.ratedArena`    | True in rated arena.                |
 | `vayn.battleground`  | True in battlegrounds.              |
