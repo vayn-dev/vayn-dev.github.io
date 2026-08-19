@@ -44,6 +44,7 @@ assassination.eviscerate:Callback("5ComboPoints", function(spell)
     return spell:Cast(target)
 end)
 ```
+
 You should always return out of the callback function. This tells the framework that a cast was sucessful (if it passed all checks that are hidden inside :Cast()) and no more logic needs to be performed this iteration.
 
 You can also chain these returns with alerts. (Alerts always return true)
@@ -172,10 +173,10 @@ castByID = false
 jump = false
 jumpOrMove = false
 heading = false
-name = nil
+name = nil --you can overwrite the name that will get used to call CastSpellByName()
 ```
 
-Pass an `attributes` table to override any of these at creation time.
+Pass an `attributes` table to override any of these at creation time or later as second argument to :Cast()
 
 
 
