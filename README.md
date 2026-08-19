@@ -794,8 +794,6 @@ Generic resource methods:
 | `powerPct(type)` | Power percentage. |
 | `powerDeficit(type)` | Missing power. |
 
-Each resource also exposes `<resource>`, `<resource>Max`, `<resource>Pct`, and `<resource>Deficit` properties where applicable.
-
 | Resource | Common properties |
 |---|---|
 | Mana | `mana`, `manaMax`, `manaPct`, `manaDeficit` |
@@ -824,8 +822,21 @@ Player-only resource properties include `powerRegen`, `basePowerRegen`, `combatP
 ### Class
 
 Boolean class properties include:
-
-`warrior`, `paladin`, `hunter`, `rogue`, `priest`, `deathKnight`, `shaman`, `mage`, `warlock`, `monk`, `druid`, `demonHunter`, `evoker`
+| Property        | Description       |
+|-----------------|------------------|
+| `warrior`       | Warrior class    |
+| `paladin`       | Paladin class   |
+| `hunter`        | Hunter class    |
+| `rogue`         | Rogue class     |
+| `priest`        | Priest class    |
+| `deathKnight`   | Death Knight class |
+| `shaman`        | Shaman class    |
+| `mage`          | Mage class      |
+| `warlock`       | Warlock class   |
+| `monk`          | Monk class      |
+| `druid`         | Druid class     |
+| `demonHunter`   | Demon Hunter class |
+| `evoker`        | Evoker class    |
 
 `class1`, `class2`, and `class3` return the class index, English token, and localized name.
 
@@ -849,7 +860,33 @@ Every specialization has a boolean property such as `armsWarrior`, `frostMage`, 
 
 ### Race
 
-`race` returns the race name. Race booleans include `human`, `orc`, `nightElf`, `bloodElf`, `undead`, `dwarf`, `gnome`, `draenei`, `worgen`, `pandaren`, `tauren`, `troll`, `goblin`, `voidElf`, `lightforgedDraenei`, `darkIronDwarf`, `kulTiran`, `mechagnome`, `nightborne`, `highmountainTauren`, `magharOrc`, `zandalariTroll`, `vulpera`, and `dracthyr`.
+| Property                | Description         |
+|-------------------------|--------------------|
+| `race`                  | Returns the race name. |
+| `human`                 | Human race boolean |
+| `orc`                   | Orc race boolean   |
+| `nightElf`              | Night Elf race boolean |
+| `bloodElf`              | Blood Elf race boolean |
+| `undead`                | Undead race boolean |
+| `dwarf`                 | Dwarf race boolean |
+| `gnome`                 | Gnome race boolean |
+| `draenei`               | Draenei race boolean |
+| `worgen`                | Worgen race boolean |
+| `pandaren`              | Pandaren race boolean |
+| `tauren`                | Tauren race boolean |
+| `troll`                 | Troll race boolean |
+| `goblin`                | Goblin race boolean |
+| `voidElf`               | Void Elf race boolean |
+| `lightforgedDraenei`    | Lightforged Draenei race boolean |
+| `darkIronDwarf`         | Dark Iron Dwarf race boolean |
+| `kulTiran`              | Kul Tiran race boolean |
+| `mechagnome`            | Mechagnome race boolean |
+| `nightborne`            | Nightborne race boolean |
+| `highmountainTauren`    | Highmountain Tauren race boolean |
+| `magharOrc`             | Mag'har Orc race boolean |
+| `zandalariTroll`        | Zandalari Troll race boolean |
+| `vulpera`               | Vulpera race boolean |
+| `dracthyr`              | Dracthyr race boolean |
 
 ## Attackers & PvP Utility
 
