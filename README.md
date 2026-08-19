@@ -12,6 +12,19 @@ return paths --its important to return the table here, so it can be used to load
 
 Every file you load gets passed 3 Tables. The original Unlocker table containing functions supplied by the unlocker, the vayn table, giving you access to all functions inside the framework and a empty table that is shared across all your files.
 
+# File Headers
+I like to do this at the top of my files:
+```lua
+local WGG, vayn, myProject = ...
+if vayn.player.class2 ~= "ROGUE" then return 'skipped' end
+
+local player = vayn.player
+local target = vayn.target
+local assassination = myProject.spellBook.rogue.assassination
+```
+This gives you access to player and target without having to access the vayn table everytime, also returning early if the containing code is not for the class that is currently logged in saves some bloat.
+
+
 # Spellbook
 Vayn itself contains a spell book already, used for the integrated rotations. You can create your own:
 
