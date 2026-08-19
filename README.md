@@ -822,8 +822,9 @@ Player-only resource properties include `powerRegen`, `basePowerRegen`, `combatP
 ### Class
 
 Boolean class properties include:
-| Property        | Description       |
-|-----------------|------------------|
+
+| Property | Description |
+|---|---|
 | `warrior`       | Warrior class    |
 | `paladin`       | Paladin class   |
 | `hunter`        | Hunter class    |
