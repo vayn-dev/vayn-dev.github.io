@@ -2,6 +2,14 @@
 The only file that is needed is your custom Loadorder in /vayn/classes/class_index.lua.
 Here you determine which files will be loaded.
 
+```lua
+local paths = {
+    "C:/WGG/vayn/classes/druid/balance",
+}
+
+return paths --its important to return the table here, so it can be used to load your files!
+```
+
 Every file you load gets passed 3 Tables. The original Unlocker table containing functions supplied by the unlocker, the vayn table, giving you access to all functions inside the framework and a empty table that is shared across all your files.
 
 # Spellbook
@@ -18,6 +26,7 @@ myProject.spellBook = {
     }
 }
 ```
+
 You could also only do one layer, or even more splitting into categories like cc, damage, defensives and so on.
 Check the spells segment later on for more info about creating spell objects.
 
