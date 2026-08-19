@@ -1,8 +1,416 @@
+# Spell API
+
+The `spell` module (`frame/spell/spell.lua`) wraps WoW spells into **spell objects** used by rotation callbacks. Each spell knows its cooldown, range, cast rules, and optional AoE placement logic.
+
+Spell objects are created via `vayn.spell:New(spellID, attributes)` and invoked from actor callbacks with `spell()` or `spell("callbackName")`.
+
+---
+
+## Quick start
+
+```lua
+-- Define in spellBook
+kick = vayn.spell:New(1766, { interrupt = true, ignoreGCD = true })
+
+-- Register a callback in an actor file
+kick:Callback(function(spell)
+    if not vayn.target.casting then return end
+    return spell:Cast(vayn.target) and vayn.alert(spell.name, spell.id)
+end)
+
+-- Invoke from the actor tick (runs callback named "default")
+kick()
+
+-- Ground-targeted spell with smart placement
+tarTrap:Callback("healer", function(spell)
+    local healer = vayn.enemies.find(function(e) return e.healer end)
+    if not healer then return end
+    return spell:SmartAoE(healer, {
+        minHits = 1,
+        offsetMin = 1,
+        offsetMax = 3,
+        ignoreFriends = true,
+        movePredTime = healer.trapTravelTime,
+    })
+end)
+
+-- Simple ground cast near a unit
+freeze:Callback(function(spell)
+    return spell:FastAoE(vayn.target) and vayn.alert(spell.name, spell.id)
+end)
+```
+
+---
+
+## Construction
+
+### `spell:New(id, attributes?)`
+
+Creates a spell wrapper from a spell ID. Returns `nil` if the spell is not found in the client.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` / `spellID` | number | Spell ID |
+| `name` | string | Localized spell name from `C_Spell.GetSpellInfo` |
+| `iconID` | number | Spell icon |
+| `castTime` | number | Cast time in seconds |
+| `info` | table | Raw `C_Spell.GetSpellInfo` result |
+| `attributes` | table | Cast/placement behaviour flags (see below) |
+| `callbacks` | table | Named callback functions |
+| `target` | boolean | Optional macro target override |
+
+Default attributes set in `New()`:
+
+```lua
+ignoreStun = false
+ignoreControl = false
+ignoreGCD = false
+ignoreMoving = (castTime <= 0)   -- instant spells ignore movement by default
+ignoreCasting = false
+ignoreChanneling = false
+ignoreLoS = false
+ignoreFacing = false
+ignoreDirectionalImmunity = false
+ignorePreCast = false
+cancelCatForm = false
+ignoreEnemies = false
+face = false
+stopMoving = false
+heal = false
+beneficial = false
+damage = false
+effect = false
+cc = false
+interrupt = false
+castByID = false
+jump = false
+jumpOrMove = false
+heading = false
+name = nil
+```
+
+Pass an `attributes` table to override any of these at creation time.
+
+
+
+## Access model
+
+### Properties (read-only)
+
+Accessed without parentheses via `propertyMap`:
+
+```lua
+spell.cd
+spell.known
+spell.range
+spell.charges
+```
+
+### Methods (callable)
+
+Defined directly on the spell table:
+
+```lua
+spell:Cast(unit?, overwrites?)
+spell:Castable(unit?, overwrites?)
+spell:Callback(name?, fn)
+spell:SmartAoE(unitOrPosition, overwrites?)
+spell:FastAoE(unit, options?)
+```
+
+When `Cast(unit, overwrites)` receives a non-unit first argument, it treats that table as `overwrites` and casts without a target.
+
+---
+
+## Cooldown & charges
+
+| Property | Returns |
+|----------|---------|
+| `cd` | Remaining cooldown in seconds (`math.huge` if unknown) |
+| `baseCD` | Base cooldown from `GetSpellBaseCooldown` (does not work for charge spells) |
+| `known` | Whether the spell is known (`IsSpellKnown`, `IsPlayerSpell`, overrides) |
+| `usable` | Whether the spell is currently usable |
+| `noMana` | Whether unusable due to insufficient resources |
+| `cost` | Primary power cost from `C_Spell.GetSpellPowerCost` |
+| `charges` | Current charges |
+| `maxCharges` | Maximum charges |
+| `chargesFrac` | Fractional charges including partial recharge progress |
+| `nextChargeCD` | Time until the next charge is available |
+| `fullRechargeTime` | Time until all charges are restored |
+| `current` | Whether the spell is the current spell (`C_Spell.IsCurrentSpell`) |
+| `count` | Cast count (`C_Spell.GetSpellCastCount`, when available) |
+
+---
+
+## Range
+
+| Property | Returns |
+|----------|---------|
+| `minRange` | Minimum range from spell info |
+| `maxRange` | Maximum range from spell info |
+| `range` | Effective cast range: `max(minRange, maxRange)` plus player combat reach; falls back to `vayn.player.meleeRange` when both are 0 |
+| `castLength` | Alias for `castTime` |
+
+---
+
+## Dispel flags
+
+| Property | Returns |
+|----------|---------|
+| `curseDispell` | Spell ID is in `vayn.ids.dispellSpellsCurse` |
+| `dispellMagic` | Spell ID is in `vayn.ids.dispellSpellsMagic` |
+| `poisonDispell` | Spell ID is in `vayn.ids.dispellSpellsPoison` |
+
+---
+
+## Attribute properties
+
+Each entry in `attributes` is also exposed as a readable property:
+
+| Property | Purpose |
+|----------|---------|
+| `ignoreStun` / `ignoreControl` | Bypass player stun/CC checks in `Castable` |
+| `ignoreMoving` | Allow casting while moving |
+| `ignoreCasting` / `ignoreChanneling` | Allow casting during casts/channels |
+| `ignoreLoS` / `ignoreFacing` | Skip line-of-sight and facing checks |
+| `ignoreDirectionalImmunity` | Ignore directional physical immunity |
+| `ignorePreCast` / `ignorePreCastWindow` | Cast even when CD is within pre-cast window |
+| `ignoreGCD` | GCD-related queue handling in `Cast` |
+| `face` / `heading` / `stopMoving` | Pre-cast movement/facing behaviour |
+| `heal` / `beneficial` / `damage` / `effect` | Target validation (`"physical"` / `"magic"` for damage/effect) |
+| `cc` | CC type string for immunity checks (`"stun"`, `"root"`, `"polymorph"`, etc.) |
+| `interrupt` | Interrupt spell — requires target casting/channeling |
+| `castByID` | Use `CastSpellByID` instead of `CastSpellByName` |
+| `jump` / `jumpOrMove` | Jump before casting |
+| `cancelCatForm` | Cancel Cat Form when rooted/slowed before casting |
+| `ignoreEnemies` | SmartAoE: skip enemy hit counting |
+| `radius` / `minHits` / `maxHits` / `offsetMin` / `offsetMax` | AoE placement parameters |
+
+---
+
+## Callbacks
+
+### `spell:Callback(name?, callback)`
+
+Registers a function invoked when the spell is called. If `name` is omitted, registers as `"default"`.
+
+### `spell:Callbacks(callbacks)`
+
+Bulk-registers a table of `{ name = fn, ... }`.
+
+### `spell(name?, ...)`
+
+The `__call` metamethod runs the callback after these guards:
+
+- Returns immediately if `vayn.tickFinished` is already set
+- Spell must be `known`
+- `cd` must be within `vayn.preCastWindow`
+- Must be `usable` (unless `noMana` and `attributes.ignoreResource`)
+- Blocks if player is casting/channeling beyond pre-cast window (unless ignored)
+- Blocks re-casting the same spell while its CD/charges would conflict
+
+On success, sets `vayn.tickFinished = true` for the rest of the tick.
+
+---
+
+## Casting
+
+### `spell:Cast(unit?, overwrites?)`
+
+Executes a targeted cast after `Castable` checks pass.
+
+**Pre-cast behaviour** (controlled by attributes and `overwrites`):
+
+- `stopMoving` — calls `vayn:ControlMoving(duration)` (default 0.5s, or numeric override)
+- `jump` / `jumpOrMove` — calls `vayn:JumpApex()`
+- `ignoreCasting` — stops current cast via `SpellStopCasting()`
+- `cancelCatForm` — cancels Cat Form when rooted/slowed
+- `castByID` — uses `CastSpellByID(spellID, unitToken)`
+- `attributes.name` / `overwrites.name` — casts by alternate spell name
+- otherwise — `vayn.CastSpellByName(name, unitToken)`
+
+Cast attempts are rate-limited per spell ID via an internal delay (0.25–0.50s).
+
+Returns `true` on cast attempt, `false`/`nil` on failure.
+
+### `spell:Castable(unit?, overwrites?)`
+
+Returns whether the spell can be cast right now. Merges `self.attributes` with `overwrites` for the check.
+
+**Player checks:**
+
+- Not stunned (unless `ignoreStun` / `ignoreControl`)
+- Not in hard CC
+- Not moving (unless `ignoreMoving`, `stopMoving`, or `canCastWhileMoving`)
+- Not casting/channeling beyond pre-cast window
+
+**Target checks** (when `unit` is provided):
+
+- Range (uses `overwrites.range` or `self.range`)
+- Not dead (unless `ignoreDead` in overwrites)
+- CC spells cannot target totems
+- `damage` → enemy only; `heal` / `beneficial` → friend only
+- Searing Glare blocks damage/CC/effect (except interrupts)
+- Line of sight and facing
+- Directional, physical/magic damage/effect immunities
+- CC-type immunities matching `attributes.cc`
+- Heal/beneficial/interrupt immunities
+
+Returns `true` when all checks pass.
+
+---
+
+## AoE casting
+
+Ground-targeted spells use methods from the AoE extension modules.
+
+### `spell:SmartAoE(unitOrPosition, overwrites?)`
+
+Finds an optimal ground position and casts there.
+
+1. Validates input is a table (unit or `{x, y, z}`)
+2. If input is a **unit** (`stunDR` present), runs `Castable` and resolves to a predicted/actual position
+3. Calls `GetSmartAoEPosition` to search candidate positions
+4. Calls `AoECast` at the best result
+
+**Placement parameters** (from attributes or `overwrites`):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `radius` | `8` | Hit evaluation radius |
+| `offsetMin` | `0.5` | Min distance from anchor |
+| `offsetMax` | `20` | Max distance from anchor |
+| `distanceSteps` | `18` | Distance search granularity |
+| `circleSteps` | `10` | Angular search granularity |
+| `minHits` / `maxHits` | `0` / `∞` | Required hit count range |
+| `movePredTime` | `0` | Unit position prediction time |
+| `sort` | hits desc | Custom sort function for candidates |
+| `ignoreHitCount` | `false` | Skip hit evaluation |
+| `ignoreEnemies` / `ignoreFriends` | `false` | Limit which unit lists are counted |
+| `filter` | nil | `(unit) → bool` hit filter |
+
+Results are cached for 0.5s under `"SmartAoEPosition_<name>"`.
+
+### `spell:AoECast(position, overwrites?)`
+Raw spell cast at given position.
+
+### `spell:FastAoE(unit, options?)`
+
+Lightweight alternative to `SmartAoE` for single-target ground placement near a unit.
+
+1. Runs `Castable(unit)` when input is a unit
+2. Resolves unit to position (with optional `options.movePredTime` prediction)
+3. Picks a random offset within `radius / 2`
+4. Validates: target still in radius, player LoS, player in spell range
+5. Calls `AoECast` on success
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `radius` | `self.radius` or `5` | Placement variance and target check radius |
+| `range` | `self.range` or `0` | Max cast range from player |
+| `movePredTime` | nil | Unit position prediction |
+
+Retries up to 10 times with uncached random offsets.
+
+---
+
+## Full property index
+
+<details>
+<summary>52 properties (click to expand)</summary>
+
+baseCD
+beneficial
+cancelCatForm
+castByID
+castLength
+cc
+charges
+chargesFrac
+cost
+count
+cd
+curseDispell
+current
+damage
+dispellMagic
+effect
+face
+fullRechargeTime
+heading
+heal
+ignoreCasting
+ignoreChanneling
+ignoreControl
+ignoreDirectionalImmunity
+ignoreEnemies
+ignoreFacing
+ignoreGCD
+ignoreLoS
+ignoreMoving
+ignorePreCast
+ignorePreCastWindow
+ignoreStun
+interrupt
+jump
+jumpOrMove
+known
+maxCharges
+maxHits
+minHits
+minRange
+maxRange
+nextChargeCD
+noMana
+offsetMax
+offsetMin
+poisonDispell
+radius
+range
+stopMoving
+ToDebugString
+usable
+
+</details>
+
+---
+
+## Full method index
+
+<details>
+<summary>Core + AoE methods (click to expand)</summary>
+
+Callback
+Callbacks
+Cast
+Castable
+New
+SmartAoE
+GetSmartAoEPosition
+EvaluateAoEPosition
+AoECast
+ClickGround
+FastAoE
+
+</details>
+
+---
+
+
+---
+
+## Notes
+
+- **`vayn.preCastWindow`**: Spells with CD remaining within this window can still be queued/cast depending on attributes.
+- **Overwrites**: Both `Cast` and AoE methods accept a temporary attribute override table; methods restore original values after casting.
+- **Debug**: Set `vayn.print_cast_attempts = true` to log cast attempts; failed `Castable` checks log via `vayn.debug = true` (Can also take a search string).
+---
+
 # Unit API
 
 The `unit` module (`frame/unit.lua`) is the core object wrapper around WoW game objects in vayn. Every entity the rotation logic cares about — players, NPCs, pets, totems, and game objects — is represented as a **unit** instance with a rich property and method API.
 
-Units are created via `vayn.unit:New(object)` and are usually obtained through `vayn.unitManager.get(...)`. Global shortcuts like `vayn.player`, `vayn.target`, and list members (`vayn.enemies`, `vayn.fgroup`, etc.) all resolve to unit instances.
+Global shortcuts like `vayn.player`, `vayn.target`, and list members (`vayn.enemies`, `vayn.fgroup`, etc.) all resolve to unit instances.
 
 ---
 
@@ -498,79 +906,482 @@ Accessing an unknown property throws: `Unit property <name> not found`.
 <details>
 <summary>476 properties (click to expand)</summary>
 
-```
-absorb, afflictionWarlock, alive, altitude, ams, arcaneCharges, arcaneChargesDeficit,
-arcaneChargesMax, arcaneChargesPct, arcaneMage, armsWarrior, ascending, assassinationRogue,
-astralPower, astralPowerDeficit, astralPowerMax, astralPowerPct, attackers, augmentationEvoker,
-auraInfo, averageRange, balanceDruid, base, basePowerRegen, baseRegen, battlePet, bcc,
-bccImmunity, bccImmunityRemains, bccRemains, beast, beastmasteryHunter, beneficialImmunity,
-beneficialImmunityRemains, beneficialImmunityUptime, bloodDeathknight, bloodElf, bloodlust,
-brewmasterMonk, canCastWhileMoving, canFly, capping, cappingRemains, caster, castID, casting,
-castPct, castPctRemains, castTarget, castTimeComplete, castTimeRemains, cc, ccRemains, ccUptime,
-channelID, channeling, channelName, channelNotInterruptible, channelPct, channelPctRemains,
-channelTimeComplete, channelTimeRemains, chargedComboPoints, chargedCPs, charmed,
-charmedRemains, charmedUptime, chi, chiDeficit, chiMax, chiPct, class1, class2, class3, combat,
-combatPowerRegen, combatReach, combatRegen, combatTime, comboPoints, comboPointsDeficit,
-comboPointsMax, comboPointsPct, cooldownAttackers, creator, creatureType, critter, cyclone,
-cycloneDR, cycloneDRRemains, cycloneRemains, cycloneUptime, damageRole, darkIronDwarf, dead,
-deathKnight, defensiveCDs, defensiveCDsUptime, demonHunter, demonologyWarlock, descending,
-destructionWarlock, devastationEvoker, directionalPhysicalDamageImmunity,
-directionalPhysicalDamageImmunityRemains, directionalPhysicalDamageImmunityUptime, disarm,
-disarmDR, disarmDRRemains, disarmImmunity, disarmImmunityRemains, disarmImmunityUptime,
-disarmRemains, disarmUptime, disciplinePriest, disorient, disorientDR, disorientDRRemains,
-disorientImmunity, disorientImmunityRemains, disorientImmunityUptime, disorientRemains,
-disorientUptime, distance, distance2D, dotted, dps, dracthyr, draenei, drDuration, drinking,
-druid, dummy, duration, dwarf, elementalShaman, endTime, endTimeMS, enemy, enemyTo, energy,
-energyDeficit, energyMax, energyPct, enhancementShaman, essence, essenceDeficit, essenceMax,
-essencePct, evoker, exists, existsSince, falling, fallingFar, fc, fear, fearDR, fearDRRemains,
-fearImmunity, fearImmunityRemains, fearImmunityUptime, fearRemains, fearUptime, feralDruid,
-fireMage, flying, focus, focusDeficit, focusMax, focusPct, friend, friendTo, frostDeathknight,
-frostMage, fury, furyDeficit, furyMax, furyPct, furyWarrior, gatherable, gcd, gnome, goblin,
-guardianDruid, guardianSpirit, guid, hardcc, hasFlag, haste, havocDemonhunter, healAbsorb,
-healer, healerRole, healImmunity, healImmunityRemains, healImmunityUptime, health,
-healthMissing, highmountainTauren, holyPaladin, holyPower, holyPowerDeficit, holyPowerMax,
-holyPowerPct, holyPriest, horror, horrorDR, horrorDRRemains, horrorRemains, horrorUptime,
-hp, hpa, hpMissing, human, humanoid, humanRacial, humanRacialRemains, hunter, id, incap,
-incapDR, incapDRRemains, incapImmunity, incapImmunityRemains, incapImmunityUptime, incapRemains,
-incapUptime, incomingCC, incomingCCRemains, inGroup, insanity, insanityDeficit, insanityMax,
-insanityPct, interruptImmunity, interruptImmunityRemains, interruptImmunityUptime, knockbackDR,
-knockbackDRRemains, knockbackImmunity, knockbackImmunityRemains, knockbackImmunityUptime,
-kulTiran, lastCast, lastTrinketUse, level, levitating, lightforgedDraenei, locked, longestCC,
-lootable, los, maelstrom, maelstromDeficit, maelstromMax, maelstromPct, mage, magharOrc,
-magicDamageImmunity, magicDamageImmunityRemains, magicDamageImmunityUptime, magicDPS,
-magicEffectImmunity, magicEffectImmunityRemains, magicEffectImmunityUptime, majorDefensiveCDs,
-majorDefensiveCDsUptime, mana, manaDeficit, manaMax, manaPct, marksmanshipHunter, maxGCD,
-maxHealth, maxRemaining, maxSpeed, mechagnome, melee, meleeAttackers, meleeRange, mindcontrol,
-mindcontrolRemains, mindcontrolUptime, mistweaverMonk, monk, mounted, movementFlag, moving,
-movingBackward, movingBackwardPending, movingForward, movingForwardPending, name, nightborne,
-nightElf, notInterruptible, offensiveCDs, offensiveCDsUptime, omToken, onTransport,
-orbOfPower, orc, outdoors, outlawRogue, pain, painDeficit, painMax, painPct, paladin, pandaren,
-party, pet, physicalDamageImmunity, physicalDamageImmunityRemains, physicalDamageImmunityUptime,
-physicalDPS, physicalEffectImmunity, physicalEffectImmunityRemains, physicalEffectImmunityUptime,
-player, polymorphImmunity, polymorphImmunityRemains, polymorphImmunityUptime, position,
-positionRaw, powerRegen, powerType, predictedSoulShards, preservationEvoker, priest,
-protectionPaladin, protectionWarrior, purgable, race, racialRemaining, rage, rageDeficit,
-rageMax, ragePct, raid, ranged, rangedAttackers, ready, realHealth, realHealthMissing,
-restorationDruid, restorationShaman, retributionPaladin, rogue, role, root, rootDR,
-rootDRRemains, rootImmunity, rootImmunityRemains, rootImmunityUptime, rootRemains, rootUptime,
-rotation, runeBlood, runeBloodDeficit, runeBloodMax, runeBloodPct, runeFrost, runeFrostDeficit,
-runeFrostMax, runeFrostPct, runes, runesDeficit, runesMax, runesPct, runeUnholy,
-runeUnholyDeficit, runeUnholyMax, runeUnholyPct, runicPower, runicPowerDeficit,
-runicPowerMax, runicPowerPct, safe, searingGlare, shadowPriest, shaman, sharedRemaining,
-silence, silenceDR, silenceDRRemains, silenceImmunity, silenceImmunityRemains,
-silenceImmunityUptime, silenceRemains, silenceUptime, skinnable, sleep, sleepRemains,
-sleepUptime, slow, slowImmunity, slowImmunityRemains, slowImmunityUptime, slowRemains,
-slowUptime, smokeBomb, soulShards, soulShardsDeficit, soulShardsMax, soulShardsPct, speared,
-specColor, specID, specName, specNameShort, speed, spellId, start, startTimeMS, staticField,
-stealth, straving, stravingLeft, stravingLeftPending, stravingRight, stravingRightPending,
-stun, stunBreak, stunDR, stunDRRemains, stunImmunity, stunImmunityRemains, stunImmunityUptime,
-stunRemains, stunUptime, subtletyRogue, survivalHunter, swimming, tank, tankRole, tapDenied,
-target, tauren, timeStandingStill, timeToUnit, timeToUnitRaw, totem, trapTravelTime, trinket,
-trinketRemains, troll, turning, turningLeft, turningRight, type, typeName, undead,
-unholyDeathknight, untouchableCC, untouchableCCRemains, untouchableCCUptime, uptime, valid,
-vbcc, vbccRemains, vengeanceDemonhunter, viable, viableEnemy, viableFriend, voidElf, vulpera,
-warlock, warrior, windwalkerMonk, worgen, x, y, z, zandalariTroll
-```
+absorb
+afflictionWarlock
+alive
+altitude
+ams
+arcaneCharges
+arcaneChargesDeficit
+arcaneChargesMax
+arcaneChargesPct
+arcaneMage
+armsWarrior
+ascending
+assassinationRogue
+astralPower
+astralPowerDeficit
+astralPowerMax
+astralPowerPct
+attackers
+augmentationEvoker
+auraInfo
+averageRange
+balanceDruid
+base
+basePowerRegen
+baseRegen
+battlePet
+bcc
+bccImmunity
+bccImmunityRemains
+bccRemains
+beast
+beastmasteryHunter
+beneficialImmunity
+beneficialImmunityRemains
+beneficialImmunityUptime
+bloodDeathknight
+bloodElf
+bloodlust
+brewmasterMonk
+canCastWhileMoving
+canFly
+capping
+cappingRemains
+caster
+castID
+casting
+castPct
+castPctRemains
+castTarget
+castTimeComplete
+castTimeRemains
+cc
+ccRemains
+ccUptime
+channelID
+channeling
+channelName
+channelNotInterruptible
+channelPct
+channelPctRemains
+channelTimeComplete
+channelTimeRemains
+chargedComboPoints
+chargedCPs
+charmed
+charmedRemains
+charmedUptime
+chi
+chiDeficit
+chiMax
+chiPct
+class1
+class2
+class3
+combat
+combatPowerRegen
+combatReach
+combatRegen
+combatTime
+comboPoints
+comboPointsDeficit
+comboPointsMax
+comboPointsPct
+cooldownAttackers
+creator
+creatureType
+critter
+cyclone
+cycloneDR
+cycloneDRRemains
+cycloneRemains
+cycloneUptime
+damageRole
+darkIronDwarf
+dead
+deathKnight
+defensiveCDs
+defensiveCDsUptime
+demonHunter
+demonologyWarlock
+descending
+destructionWarlock
+devastationEvoker
+directionalPhysicalDamageImmunity
+directionalPhysicalDamageImmunityRemains
+directionalPhysicalDamageImmunityUptime
+disarm
+disarmDR
+disarmDRRemains
+disarmImmunity
+disarmImmunityRemains
+disarmImmunityUptime
+disarmRemains
+disarmUptime
+disciplinePriest
+disorient
+disorientDR
+disorientDRRemains
+disorientImmunity
+disorientImmunityRemains
+disorientImmunityUptime
+disorientRemains
+disorientUptime
+distance
+distance2D
+dotted
+dps
+dracthyr
+draenei
+drDuration
+drinking
+druid
+dummy
+duration
+dwarf
+elementalShaman
+endTime
+endTimeMS
+enemy
+enemyTo
+energy
+energyDeficit
+energyMax
+energyPct
+enhancementShaman
+essence
+essenceDeficit
+essenceMax
+essencePct
+evoker
+exists
+existsSince
+falling
+fallingFar
+fc
+fear
+fearDR
+fearDRRemains
+fearImmunity
+fearImmunityRemains
+fearImmunityUptime
+fearRemains
+fearUptime
+feralDruid
+fireMage
+flying
+focus
+focusDeficit
+focusMax
+focusPct
+friend
+friendTo
+frostDeathknight
+frostMage
+fury
+furyDeficit
+furyMax
+furyPct
+furyWarrior
+gatherable
+gcd
+gnome
+goblin
+guardianDruid
+guardianSpirit
+guid
+hardcc
+hasFlag
+haste
+havocDemonhunter
+healAbsorb
+healer
+healerRole
+healImmunity
+healImmunityRemains
+healImmunityUptime
+health
+healthMissing
+highmountainTauren
+holyPaladin
+holyPower
+holyPowerDeficit
+holyPowerMax
+holyPowerPct
+holyPriest
+horror
+horrorDR
+horrorDRRemains
+horrorRemains
+horrorUptime
+hp
+hpa
+hpMissing
+human
+humanoid
+humanRacial
+humanRacialRemains
+hunter
+id
+incap
+incapDR
+incapDRRemains
+incapImmunity
+incapImmunityRemains
+incapImmunityUptime
+incapRemains
+incapUptime
+incomingCC
+incomingCCRemains
+inGroup
+insanity
+insanityDeficit
+insanityMax
+insanityPct
+interruptImmunity
+interruptImmunityRemains
+interruptImmunityUptime
+knockbackDR
+knockbackDRRemains
+knockbackImmunity
+knockbackImmunityRemains
+knockbackImmunityUptime
+kulTiran
+lastCast
+lastTrinketUse
+level
+levitating
+lightforgedDraenei
+locked
+longestCC
+lootable
+los
+maelstrom
+maelstromDeficit
+maelstromMax
+maelstromPct
+mage
+magharOrc
+magicDamageImmunity
+magicDamageImmunityRemains
+magicDamageImmunityUptime
+magicDPS
+magicEffectImmunity
+magicEffectImmunityRemains
+magicEffectImmunityUptime
+majorDefensiveCDs
+majorDefensiveCDsUptime
+mana
+manaDeficit
+manaMax
+manaPct
+marksmanshipHunter
+maxGCD
+maxHealth
+maxRemaining
+maxSpeed
+mechagnome
+melee
+meleeAttackers
+meleeRange
+mindcontrol
+mindcontrolRemains
+mindcontrolUptime
+mistweaverMonk
+monk
+mounted
+movementFlag
+moving
+movingBackward
+movingBackwardPending
+movingForward
+movingForwardPending
+name
+nightborne
+nightElf
+notInterruptible
+offensiveCDs
+offensiveCDsUptime
+omToken
+onTransport
+orbOfPower
+orc
+outdoors
+outlawRogue
+pain
+painDeficit
+painMax
+painPct
+paladin
+pandaren
+party
+pet
+physicalDamageImmunity
+physicalDamageImmunityRemains
+physicalDamageImmunityUptime
+physicalDPS
+physicalEffectImmunity
+physicalEffectImmunityRemains
+physicalEffectImmunityUptime
+player
+polymorphImmunity
+polymorphImmunityRemains
+polymorphImmunityUptime
+position
+positionRaw
+powerRegen
+powerType
+predictedSoulShards
+preservationEvoker
+priest
+protectionPaladin
+protectionWarrior
+purgable
+race
+racialRemaining
+rage
+rageDeficit
+rageMax
+ragePct
+raid
+ranged
+rangedAttackers
+ready
+realHealth
+realHealthMissing
+restorationDruid
+restorationShaman
+retributionPaladin
+rogue
+role
+root
+rootDR
+rootDRRemains
+rootImmunity
+rootImmunityRemains
+rootImmunityUptime
+rootRemains
+rootUptime
+rotation
+runeBlood
+runeBloodDeficit
+runeBloodMax
+runeBloodPct
+runeFrost
+runeFrostDeficit
+runeFrostMax
+runeFrostPct
+runes
+runesDeficit
+runesMax
+runesPct
+runeUnholy
+runeUnholyDeficit
+runeUnholyMax
+runeUnholyPct
+runicPower
+runicPowerDeficit
+runicPowerMax
+runicPowerPct
+safe
+searingGlare
+shadowPriest
+shaman
+sharedRemaining
+silence
+silenceDR
+silenceDRRemains
+silenceImmunity
+silenceImmunityRemains
+silenceImmunityUptime
+silenceRemains
+silenceUptime
+skinnable
+sleep
+sleepRemains
+sleepUptime
+slow
+slowImmunity
+slowImmunityRemains
+slowImmunityUptime
+slowRemains
+slowUptime
+smokeBomb
+soulShards
+soulShardsDeficit
+soulShardsMax
+soulShardsPct
+speared
+specColor
+specID
+specName
+specNameShort
+speed
+spellId
+start
+startTimeMS
+staticField
+stealth
+straving
+stravingLeft
+stravingLeftPending
+stravingRight
+stravingRightPending
+stun
+stunBreak
+stunDR
+stunDRRemains
+stunImmunity
+stunImmunityRemains
+stunImmunityUptime
+stunRemains
+stunUptime
+subtletyRogue
+survivalHunter
+swimming
+tank
+tankRole
+tapDenied
+target
+tauren
+timeStandingStill
+timeToUnit
+timeToUnitRaw
+totem
+trapTravelTime
+trinket
+trinketRemains
+troll
+turning
+turningLeft
+turningRight
+type
+typeName
+undead
+unholyDeathknight
+untouchableCC
+untouchableCCRemains
+untouchableCCUptime
+uptime
+valid
+vbcc
+vbccRemains
+vengeanceDemonhunter
+viable
+viableEnemy
+viableFriend
+voidElf
+vulpera
+warlock
+warrior
+windwalkerMonk
+worgen
+x
+y
+z
+zandalariTroll
 
 </details>
 
@@ -581,18 +1392,64 @@ warlock, warrior, windwalkerMonk, worgen, x, y, z, zandalariTroll
 <details>
 <summary>58 methods (click to expand)</summary>
 
-```
-angleTo, behind, buff, buffFrom, buffRemains, buffStacks, buffUptime,
-canCastOverlappingSpell, cooldown, debuff, debuffFrom, debuffRemains, debuffStacks,
-debuffUptime, distance2DTo, distance2DToPosition, distanceTo, distanceToPosition,
-enemyTo, facing, facing45, facing90, friendTo, hasMovementFlag, hasTalent, hasTotem,
-hiddenAura, hiddenAuraFrom, hiddenAuraRemains, hiddenAuraUptime, icewallObstructingLosTo,
-icewallObstructingLosToPosition, isTarget, isUnit, losOf, losTo, losToPosition,
-losToPositionRaw, losToRaw, movingAwayFrom, movingTowards, power, powerDeficit, powerMax,
-powerPct, predictDistance, predictDistance2D, predictDistance2DTo, predictDistanceTo,
-predictLos, predictPosition, recentlyCast, recentlyCastTime, setFace, SetFacing,
-setOverlappingSpell, smokebombObstructingLosTo, v2Attackers
-```
+angleTo
+behind
+buff
+buffFrom
+buffRemains
+buffStacks
+buffUptime
+canCastOverlappingSpell
+cooldown
+debuff
+debuffFrom
+debuffRemains
+debuffStacks
+debuffUptime
+distance2DTo
+distance2DToPosition
+distanceTo
+distanceToPosition
+enemyTo
+facing
+facing45
+facing90
+friendTo
+hasMovementFlag
+hasTalent
+hasTotem
+hiddenAura
+hiddenAuraFrom
+hiddenAuraRemains
+hiddenAuraUptime
+icewallObstructingLosTo
+icewallObstructingLosToPosition
+isTarget
+isUnit
+losOf
+losTo
+losToPosition
+losToPositionRaw
+losToRaw
+movingAwayFrom
+movingTowards
+power
+powerDeficit
+powerMax
+powerPct
+predictDistance
+predictDistance2D
+predictDistance2DTo
+predictDistanceTo
+predictLos
+predictPosition
+recentlyCast
+recentlyCastTime
+setFace
+SetFacing
+setOverlappingSpell
+smokebombObstructingLosTo
+v2Attackers
 
 </details>
 
