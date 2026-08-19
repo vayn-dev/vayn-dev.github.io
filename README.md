@@ -676,29 +676,80 @@ Aura objects expose properties such as `.remains`, `.uptime`, `.stacks`, `.creat
 
 CC is detected from the aura tables in `vayn.ids.cc`. Most CC properties return an aura object when active and `nil`/`false` otherwise.
 
-| Property | Description |
-|---|---|
-| `stun` / `incap` / `disorient` / `fear` / `horror` / `mindcontrol` | Hard CC. |
-| `cyclone` / `sleep` / `charmed` | Special CC. |
-| `disarm` / `root` / `slow` / `silence` | Soft CC. |
-| `bcc` | Breakable CC. |
-| `vbcc` | Valuable breakable CC. |
-| `hardcc` | Non-breakable hard CC. |
-| `cc` | Role-aware CC summary. |
-| `longestCC` | Longest active CC aura. |
-| `incomingCC` / `incomingCCRemains` | Predicted incoming CC. |
-
-CC categories also expose matching `*Remains` and `*Uptime` properties and, where applicable, `*DR` / `*DRRemains` properties.
+| Property           | Description                            |
+|--------------------|----------------------------------------|
+| **Hard Crowd Control:** | |
+| `stun`             | Stun aura object             |
+| `incap`            | Incapacitate aura object     |
+| `disorient`        | Disorient aura object        |
+| `fear`             | Fear aura object            |
+| `horror`           | Horror aura object          |
+| `mindcontrol`      | Mind Control aura object    |
+| **Soft Crowd Control:**  | |
+| `disarm`           | Disarm aura object          |
+| `root`             | Root aura object            |
+| `slow`             | Slow aura object            |
+| `silence`          | Silence aura object         |
+| **Special CC Types:**     |                               |
+| `bcc`              | Breakable Crowd Control                |
+| `vbcc`             | Valuable Breakable Crowd Control       |
+| `hardcc`           | Non-breakable Hard Crowd Control       |
+| `cc`               | Role-aware CC summary                  |
+| `incomingCC`       | Predicted incoming CC                  |
+| **Time Remaining for Each CC Category:** |                 |
+| `stunRemains`            | Time remaining on stun           |
+| `incapRemains`           | Time remaining on incapacitate   |
+| `disorientRemains`       | Time remaining on disorient      |
+| `fearRemains`            | Time remaining on fear           |
+| `horrorRemains`          | Time remaining on horror         |
+| `mindcontrolRemains`     | Time remaining on mind control   |
+| `disarmRemains`          | Time remaining on disarm         |
+| `rootRemains`            | Time remaining on root           |
+| `slowRemains`            | Time remaining on slow           |
+| `silenceRemains`         | Time remaining on silence        |
+| `bccRemains`             | Time remaining on breakable CC   |
+| `vbccRemains`            | Time remaining on valuable BCC   |
+| `hardccRemains`          | Time remaining on non-breakable CC|
+| `ccRemains`              | Time remaining on general CC     |
+| **Uptime for Each CC Category:**         |                  |
+| `stunUptime`             | Uptime for stun                  |
+| `incapUptime`            | Uptime for incapacitate          |
+| `disorientUptime`        | Uptime for disorient             |
+| `fearUptime`             | Uptime for fear                  |
+| `horrorUptime`           | Uptime for horror                |
+| `mindcontrolUptime`      | Uptime for mind control          |
+| `disarmUptime`           | Uptime for disarm                |
+| `rootUptime`             | Uptime for root                  |
+| `slowUptime`             | Uptime for slow                  |
+| `silenceUptime`          | Uptime for silence               |
+| `bccUptime`              | Uptime for breakable CC          |
+| `vbccUptime`             | Uptime for valuable BCC          |
+| `hardccUptime`           | Uptime for non-breakable CC      |
+| `ccUptime`               | Uptime for general CC            |
 
 ## Diminishing Returns
 
-DR values are tracked by category, including `stunDR`, `incapDR`, `disorientDR`, `fearDR`, `horrorDR`, `cycloneDR`, `disarmDR`, `rootDR`, `silenceDR`, and `knockbackDR`.
+DR values are tracked by category, including
+
+| Property         | Description                                 |
+|------------------|---------------------------------------------|
+| `stunDR`         | Stun diminishing returns tier (1, 0.5, 0).  |
+| `stunDRRemains`  | Time remaining on stun DR.                  |
+| `incapDR`        | Incapacitate diminishing returns tier.      |
+| `incapDRRemains` | Time remaining on incap DR.                 |
+| `disorientDR`    | Disorient diminishing returns tier.         |
+| `disorientDRRemains` | Time remaining on disorient DR.         |
+| `disarmDR`       | Disarm diminishing returns tier.            |
+| `disarmDRRemains`| Time remaining on disarm DR.                |
+| `rootDR`         | Root diminishing returns tier.              |
+| `rootDRRemains`  | Time remaining on root DR.                  |
+| `silenceDR`      | Silence diminishing returns tier.           |
+| `silenceDRRemains` | Time remaining on silence DR.             |
+| `knockbackDR`    | Knockback diminishing returns tier.         |
+| `knockbackDRRemains` | Time remaining on knockback DR.         |
 
 Values follow the WoW DR tiers: `1 → 0.5 → 0`.
-
-| Property | Description |
-|---|---|
-| `safe` | Whether the unit is considered safe due to major defensives, CC, etc. |
+If a unit is on full stun DR it will be also considered stun immune, :Castable(unit) checks will fail during this time.
 
 ## Immunities
 
