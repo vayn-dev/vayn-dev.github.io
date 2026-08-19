@@ -1,132 +1,170 @@
-# File Structure
-The only file that is needed is your custom Loadorder in /vayn/classes/class_index.lua.
-Here you determine which files will be loaded.
+
+## Getting Started
+
+### File Structure
+
+Your project needs a custom load order at:
+
+`/vayn/classes/class_index.lua`
+
+This file returns the paths that should be loaded.
 
 ```lua
 local paths = {
     "C:/WGG/vayn/classes/druid/balance",
 }
 
-return paths --its important to return the table here, so it can be used to load your files!
+return paths
 ```
 
-Every file you load gets passed 3 Tables. The original Unlocker table containing functions supplied by the unlocker, the vayn table, giving you access to all functions inside the framework and a empty table that is shared across all your files.
+> **Important:** The file must return the `paths` table so Vayn can load the files.
 
-# File Headers
-I like to do this at the top of my files:
+Each loaded file receives three tables:
+
+1. `WGG` — the original Unlocker table and its supplied functions.
+2. `vayn` — access to the Vayn framework.
+3. Your project table — shared by all files in the project.
+
+### File Headers
+
+A simple header gives each file access to the common objects it needs:
+
 ```lua
 local WGG, vayn, myProject = ...
-if vayn.player.class2 ~= "ROGUE" then return 'skipped' end
+
+if vayn.player.class2 ~= "ROGUE" then
+    return "skipped"
+end
 
 local player = vayn.player
 local target = vayn.target
 local assassination = myProject.spellBook.rogue.assassination
 ```
 
-This gives you access to player and target without having to access the vayn table everytime, also returning early if the containing code is not for the class that is currently logged in saves some bloat.
+This keeps the rest of the file concise. Returning early also prevents class-specific code from running for other classes.
 
+### Spellbook
 
-# Spellbook
-Vayn itself contains a spell book already, used for the integrated rotations. You can create your own:
+Create your own spellbook instead of repeatedly constructing spell objects throughout the rotation:
 
 ```lua
 local WGG, vayn, myProject = ...
 
 myProject.spellBook = {
     rogue = {
-        assasination = {
-            eviscerate = vayn.spell:New(12345)
-        }
-    }
+        assassination = {
+            eviscerate = vayn.spell:New(12345),
+        },
+    },
 }
 ```
 
-You could also only do one layer, or even more splitting into categories like cc, damage, defensives and so on.
-Check the spells segment later on for more info about creating spell objects.
+The structure is up to you. You can use a single level, split by specialization, or add categories such as `damage`, `cc`, and `defensives`.
 
-# Callbacks
-So we need some logic to decide what to do and when to cast a certain spell, right?
-Thats what callbacks are for, we register our logic with the spell object our final decision will most likely always be calling :Cast() on a certain spell.
+See [Spell API](#spell-api) for spell creation and configuration.
+
+### Callbacks
+
+Callbacks contain the conditions for using a spell. The rotation itself can then stay small and simply call the appropriate callback.
 
 ```lua
 local assassination = myProject.spellBook.rogue.assassination
-local target = vayn.target
 local player = vayn.player
+local target = vayn.target
 
 assassination.eviscerate:Callback("5ComboPoints", function(spell)
     if player.cp < 5 then return end
+
     return spell:Cast(target)
 end)
 ```
 
-You should always return out of the callback function. This tells the framework that a cast was sucessful (if it passed all checks that are hidden inside :Cast()) and no more logic needs to be performed this iteration.
+Callbacks should return the result of the action. A successful `Cast()` tells the framework that the rotation has performed an action and no further logic should run for that iteration.
 
-You can also chain these returns with alerts. (Alerts always return true)
+Alerts can be chained onto the return value:
 
 ```lua
-assassination.eviscerate:Callback("5ComboPoints", function(spell)
-    if player.cp < 5 then return end
-    return spell:Cast(target) and vayn.alert(spell.name, spell.id)
-end)
+return spell:Cast(target) and vayn.alert(spell.name, spell.id)
 ```
 
-# Rotation
-The rotation is performed by an actor, its called "sync" in vayn. Here you call the spell objects, telling them wich callback you want to execute. (If you leave this empty, the default callback will be used. Its the same like creating a callback without giving it a name)
+### Rotation
 
+The rotation is driven by `vayn.sync()`. Register the specialization ID and call the spells you want checked on each iteration.
 
 ```lua
 local assassination = myProject.spellBook.rogue.assassination
+
 vayn.sync(671, function()
     assassination.eviscerate("5ComboPoints")
 end)
 ```
 
-Registering an actor requires 2 arguments, the specID for which your rotation is created and also the function that gets called on repeat. Inside this function you call the spell objects diretly, passing the Callbackname.
+The first argument is the specialization ID. The second is the function executed repeatedly.
 
-Why shouldn't I create all the logic in the actor instead of in the callbacks? 
-The answer is simple, callbacks are checked first if the spell they are created for is even ready / castable before running the logic inside. So in complex rotations you gain a performance increase and its more readable aswell.
+Keeping conditions in callbacks is preferable to putting everything in the actor. A callback is only evaluated when its spell is usable/castable, which can reduce unnecessary work and keeps the rotation easier to read.
 
-# Static objects
-There are a few static objects we can use inside of vayn. 
+## Core Objects
 
-vayn.player always references the player object
-vayn.target always referecnes your current target
-vayn.enemyHealer references the first enemy healer it can find, useful in arena - would not use it inside of battlegrounds
+### Static Objects
 
+Vayn exposes several commonly used unit objects directly:
 
-# Unit Lists
-Like static objects there are unit lists that give you access to units that are not your current target or any other object referencable by static objects.
+| Object | Description |
+|---|---|
+| `vayn.player` | The player unit. |
+| `vayn.target` | The current target. |
+| `vayn.enemyHealer` | The first enemy healer found. Useful in arena; not recommended for battleground logic. |
 
-vayn.enemies (filtered for only players in pvp enviroment)
+### Unit Lists
 
+Unit lists provide access to units that are not exposed through the static objects.
+
+| List | Description |
+|---|---|
+| `vayn.enemies` | Enemy players in the PvP environment. |
+
+Unit lists support methods such as `within()` and `find()`.
+
+```lua
+local enemy = vayn.enemies
+    .within(40)
+    .find(function(unit)
+        return unit.viableEnemy
+    end)
+```
 
 # Spell API
 
-The `spell` module wraps WoW spells into **spell objects** used by rotation callbacks. Each spell knows its cooldown, range, cast rules, and optional AoE placement logic.
+The `spell` module wraps WoW spells in spell objects. A spell object handles cooldowns, range, castability, target validation, callbacks, and optional ground-targeted AoE logic.
 
-Spell objects are created via `vayn.spell:New(spellID, attributes)` and invoked from actor callbacks with `spell()` or `spell("callbackName")`.
-
----
-
-## Quick start
+## Quick Start
 
 ```lua
--- Define in spellBook
-kick = vayn.spell:New(1766, { interrupt = true, ignoreGCD = true })
+local kick = vayn.spell:New(1766, {
+    interrupt = true,
+    ignoreGCD = true,
+})
 
--- Register a callback in an actor file
 kick:Callback(function(spell)
     if not vayn.target.casting then return end
-    return spell:Cast(vayn.target) and vayn.alert(spell.name, spell.id)
+
+    return spell:Cast(vayn.target)
+        and vayn.alert(spell.name, spell.id)
 end)
 
--- Invoke from the actor tick (runs callback named "default")
 kick()
+```
 
--- Ground-targeted spell with smart placement
+For ground-targeted spells:
+
+```lua
 tarTrap:Callback("healer", function(spell)
-    local healer = vayn.enemies.find(function(e) return e.healer end)
+    local healer = vayn.enemies.find(function(unit)
+        return unit.healer
+    end)
+
     if not healer then return end
+
     return spell:SmartAoE(healer, {
         minHits = 1,
         offsetMin = 1,
@@ -135,39 +173,39 @@ tarTrap:Callback("healer", function(spell)
         movePredTime = healer.trapTravelTime,
     })
 end)
+```
 
--- Simple ground cast near a unit
+For a simple ground cast near a unit:
+
+```lua
 freeze:Callback(function(spell)
-    return spell:FastAoE(vayn.target) and vayn.alert(spell.name, spell.id)
+    return spell:FastAoE(vayn.target)
+        and vayn.alert(spell.name, spell.id)
 end)
 ```
 
----
+## Creating Spells
 
-## Construction
+### `vayn.spell:New(id, attributes?)`
 
-### `spell:New(id, attributes?)`
+Creates a spell object from a spell ID. Returns `nil` if the spell cannot be found in the client.
 
-Creates a spell wrapper from a spell ID. Returns `nil` if the spell is not found in the client.
+The object exposes spell information, attributes, callbacks, and casting methods.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` / `spellID` | number | Spell ID |
-| `name` | string | Localized spell name from `C_Spell.GetSpellInfo` |
-| `iconID` | number | Spell icon |
-| `castTime` | number | Cast time in seconds |
-| `info` | table | Raw `C_Spell.GetSpellInfo` result |
-| `attributes` | table | Cast/placement behaviour flags (see below) |
-| `callbacks` | table | Named callback functions |
-| `target` | boolean | Optional macro target override |
+```lua
+local kick = vayn.spell:New(1766, {
+    interrupt = true,
+    ignoreGCD = true,
+})
+```
 
-Default attributes set in `New()`:
+### Default Attributes
 
 ```lua
 ignoreStun = false
 ignoreControl = false
 ignoreGCD = false
-ignoreMoving = (castTime <= 0)   -- instant spells ignore movement by default
+ignoreMoving = (castTime <= 0)
 ignoreCasting = false
 ignoreChanneling = false
 ignoreLoS = false
@@ -187,18 +225,14 @@ castByID = false
 jump = false
 jumpOrMove = false
 heading = false
-name = nil --you can overwrite the name that will get used to call CastSpellByName()
+name = nil
 ```
 
-Pass an `attributes` table to override any of these at creation time or later as second argument to :Cast()
+Attributes can be supplied when the spell is created or temporarily overridden when casting.
 
+## Properties
 
-
-## Access model
-
-### Properties (read-only)
-
-Accessed without parentheses:
+Spell properties are accessed directly:
 
 ```lua
 spell.cd
@@ -208,719 +242,630 @@ spell.charges
 spell.chargesFrac
 spell.nextChargeCD
 spell.fullRechargeTime
-spell.curseDispell
-spell.magicDispell
 ```
 
-### Methods (callable)
+Useful groups include:
 
-Defined directly on the spell table:
+### Cooldown & Charges
 
-```lua
-spell:Cast(unit?, overwrites?)
-spell:Castable(unit?, overwrites?)
-spell:Callback(name?, fn)
-spell:SmartAoE(unitOrPosition, overwrites?)
-spell:FastAoE(unit, options?)
-```
+| Property | Description |
+|---|---|
+| `cd` | Remaining cooldown in seconds. |
+| `baseCD` | Base cooldown from `GetSpellBaseCooldown`. Not available for charge spells. |
+| `known` | Whether the spell is known. |
+| `usable` | Whether the spell is currently usable. |
+| `noMana` | Whether the spell is unusable because of insufficient resources. |
+| `cost` | Primary power cost. |
+| `charges` | Current charges. |
+| `maxCharges` | Maximum charges. |
+| `chargesFrac` | Charges including partial recharge progress. |
+| `nextChargeCD` | Time until the next charge. |
+| `fullRechargeTime` | Time until all charges are restored. |
+| `current` | Whether this is the current spell. |
+| `count` | Cast count, when available. |
 
-When `Cast(unit, overwrites)` receives a non-unit first argument, it treats that table as `overwrites` and casts without a target.
+### Range
 
----
+| Property | Description |
+|---|---|
+| `minRange` | Minimum range from spell info. |
+| `maxRange` | Maximum range from spell info. |
+| `range` | Effective cast range, including player combat reach. Falls back to `vayn.player.meleeRange` when spell ranges are zero. |
+| `castLength` | Alias for `castTime`. |
 
-## Cooldown & charges
+### Dispel Flags
 
-| Property | Returns |
-|----------|---------|
-| `cd` | Remaining cooldown in seconds (`math.huge` if unknown) |
-| `baseCD` | Base cooldown from `GetSpellBaseCooldown` (does not work for charge spells) |
-| `known` | Whether the spell is known (`IsSpellKnown`, `IsPlayerSpell`, overrides) |
-| `usable` | Whether the spell is currently usable |
-| `noMana` | Whether unusable due to insufficient resources |
-| `cost` | Primary power cost from `C_Spell.GetSpellPowerCost` |
-| `charges` | Current charges |
-| `maxCharges` | Maximum charges |
-| `chargesFrac` | Fractional charges including partial recharge progress |
-| `nextChargeCD` | Time until the next charge is available |
-| `fullRechargeTime` | Time until all charges are restored |
-| `current` | Whether the spell is the current spell (`C_Spell.IsCurrentSpell`) |
-| `count` | Cast count (`C_Spell.GetSpellCastCount`, when available) |
-
----
-
-## Range
-
-| Property | Returns |
-|----------|---------|
-| `minRange` | Minimum range from spell info |
-| `maxRange` | Maximum range from spell info |
-| `range` | Effective cast range: `max(minRange, maxRange)` plus player combat reach; falls back to `vayn.player.meleeRange` when both are 0 |
-| `castLength` | Alias for `castTime` |
-
----
-
-## Dispel flags
-
-| Property | Returns |
-|----------|---------|
-| `curseDispell` | Spell ID is in `vayn.ids.dispellSpellsCurse` |
-| `magicDispell` | Spell ID is in `vayn.ids.dispellSpellsMagic` |
-| `poisonDispell` | Spell ID is in `vayn.ids.dispellSpellsPoison` |
-
----
-
-## Attribute properties
-
-Each entry in `attributes` is also exposed as a readable property:
-
-| Property | Purpose |
-|----------|---------|
-| `ignoreStun` / `ignoreControl` | Bypass player stun/CC checks in `Castable` |
-| `ignoreMoving` | Allow casting while moving |
-| `ignoreCasting` / `ignoreChanneling` | Allow casting during casts/channels |
-| `ignoreLoS` / `ignoreFacing` | Skip line-of-sight and facing checks |
-| `ignoreDirectionalImmunity` | Ignore directional physical immunity |
-| `ignorePreCast` / `ignorePreCastWindow` | Cast even when CD is within pre-cast window |
-| `ignoreGCD` | GCD-related queue handling in `Cast` |
-| `face` / `heading` / `stopMoving` | Pre-cast movement/facing behaviour |
-| `heal` / `beneficial` / `damage` / `effect` | Target validation (`"physical"` / `"magic"` for damage/effect) |
-| `cc` | CC type string for immunity checks (`"stun"`, `"root"`, `"polymorph"`, etc.) |
-| `interrupt` | Interrupt spell — requires target casting/channeling |
-| `castByID` | Use `CastSpellByID` instead of `CastSpellByName` |
-| `jump` / `jumpOrMove` | Jump before casting |
-| `cancelCatForm` | Cancel Cat Form when rooted/slowed before casting |
-| `ignoreEnemies` | SmartAoE: skip enemy hit counting |
-| `radius` / `minHits` / `maxHits` / `offsetMin` / `offsetMax` | AoE placement parameters |
-
----
+| Property | Description |
+|---|---|
+| `curseDispell` | Spell is registered as a Curse dispel. |
+| `magicDispell` | Spell is registered as a Magic dispel. |
+| `poisonDispell` | Spell is registered as a Poison dispel. |
 
 ## Callbacks
 
 ### `spell:Callback(name?, callback)`
 
-Registers a function invoked when the spell is called. If `name` is omitted, registers as `"default"`.
+Registers a callback. Omitting `name` registers the callback as `default`.
+
+```lua
+spell:Callback(function(spell)
+    return spell:Cast(vayn.target)
+end)
+```
+
+Named callbacks are useful when the same spell needs different conditions:
+
+```lua
+spell:Callback("interrupt", function(spell)
+    if not vayn.target.casting then return end
+    return spell:Cast(vayn.target)
+end)
+```
+
+Call it with:
+
+```lua
+spell("interrupt")
+```
+
+Callbacks are checked only when the spell is usable/castable.
 
 ### `spell:Callbacks(callbacks)`
 
-Bulk-registers a table of `{ name = fn, ... }`.
+Registers multiple callbacks from a table:
 
-
-Callbacks are smart, they only run if the spell is even usable.
-
----
+```lua
+spell:Callbacks({
+    interrupt = function(spell)
+        -- ...
+    },
+    default = function(spell)
+        -- ...
+    },
+})
+```
 
 ## Casting
 
 ### `spell:Cast(unit?, overwrites?)`
 
-Executes a targeted cast after `Castable` checks pass.
+Attempts to cast the spell after the normal castability checks pass.
 
-**Pre-cast behaviour** (controlled by attributes and `overwrites`):
+Important pre-cast attributes include:
 
-- `stopMoving` — calls `vayn:ControlMoving(duration)` (default 0.5s, or numeric override)
-- `jump` / `jumpOrMove` — calls `vayn:JumpApex()`
-- `ignoreCasting` — stops current cast via `SpellStopCasting()`
-- `cancelCatForm` — cancels Cat Form when rooted/slowed
-- `castByID` — uses `CastSpellByID(spellID, unitToken)`
-- `attributes.name` / `overwrites.name` — casts by alternate spell name
-- otherwise — `vayn.CastSpellByName(name, unitToken)`
+| Attribute | Behaviour |
+|---|---|
+| `stopMoving` | Stops movement before casting. |
+| `jump` / `jumpOrMove` | Uses `vayn:JumpApex()`. |
+| `ignoreCasting` | Stops the current cast. |
+| `cancelCatForm` | Cancels Cat Form when rooted/slowed. |
+| `castByID` | Uses `CastSpellByID`. |
+| `name` | Uses an alternate spell name. |
 
-Cast attempts are rate-limited per spell ID via an internal delay (0.25–0.50s).
+Without `castByID`, casting normally uses `vayn.CastSpellByName()`.
 
-Returns `true` on cast attempt, `false`/`nil` on failure.
+Cast attempts are rate-limited per spell ID with an internal delay of approximately `0.25–0.50` seconds.
+
+Returns `true` on a cast attempt and `false`/`nil` on failure.
 
 ### `spell:Castable(unit?, overwrites?)`
 
-Returns whether the spell can be cast right now. Merges `self.attributes` with `overwrites` for the check.
+Returns whether the spell can currently be cast. Temporary `overwrites` are merged with the spell's attributes for the check.
 
-**Player checks:**
+Player checks include:
 
-- Not stunned (unless `ignoreStun` / `ignoreControl`)
-- Not in hard CC
-- Not moving (unless `ignoreMoving`, `stopMoving`, or `canCastWhileMoving`)
-- Not casting/channeling beyond pre-cast window
+- Stun and hard CC.
+- Movement restrictions.
+- Current casts/channels.
 
-**Target checks** (when `unit` is provided):
+Target checks include:
 
-- Range (uses `overwrites.range` or `self.range`)
-- Not dead (unless `ignoreDead` in overwrites)
-- CC spells cannot target totems
-- `damage` → enemy only; `heal` / `beneficial` → friend only
-- Searing Glare blocks damage/CC/effect (except interrupts)
-- Line of sight and facing
-- Directional, physical/magic damage/effect immunities
-- CC-type immunities matching `attributes.cc`
-- Heal/beneficial/interrupt immunities
+- Range.
+- Alive/dead state.
+- Friend/enemy validation.
+- Line of sight and facing.
+- Damage/effect immunities.
+- CC immunities.
+- Healing, beneficial, and interrupt immunities.
 
-Returns `true` when all checks pass.
+Returns `true` when all relevant checks pass.
 
----
+## AoE Casting
 
-## AoE casting
-
-Ground-targeted spells use methods from the AoE extension modules.
+Ground-targeted spells expose several AoE helpers.
 
 ### `spell:SmartAoE(unitOrPosition, overwrites?)`
 
-Finds an optimal ground position and casts there.
+Finds a suitable ground position and casts there.
 
-1. Validates input is a table (unit or `{x, y, z}`)
-2. If input is a **unit** (`stunDR` present), runs `Castable` and resolves to a predicted/actual position
-3. Calls `GetSmartAoEPosition` to search candidate positions
-4. Calls `AoECast` at the best result
+The input can be a unit or a `{x, y, z}` position. For units, Vayn checks castability and resolves the unit to its predicted/current position before searching for a placement.
 
-**Placement parameters** (from attributes or `overwrites`):
+Common placement options:
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `radius` | `8` | Hit evaluation radius |
-| `offsetMin` | `0.5` | Min distance from anchor |
-| `offsetMax` | `20` | Max distance from anchor |
-| `distanceSteps` | `18` | Distance search granularity |
-| `circleSteps` | `10` | Angular search granularity |
-| `minHits` / `maxHits` | `0` / `∞` | Required hit count range |
-| `movePredTime` | `0` | Unit position prediction time |
-| `sort` | hits desc | Custom sort function for candidates |
-| `ignoreHitCount` | `false` | Skip hit evaluation |
-| `ignoreEnemies` / `ignoreFriends` | `false` | Limit which unit lists are counted |
-| `filter` | nil | `(unit) → bool` hit filter |
+| Option | Default | Description |
+|---|---:|---|
+| `radius` | `8` | Hit evaluation radius. |
+| `offsetMin` | `0.5` | Minimum distance from the anchor. |
+| `offsetMax` | `20` | Maximum distance from the anchor. |
+| `distanceSteps` | `18` | Distance search granularity. |
+| `circleSteps` | `10` | Angular search granularity. |
+| `minHits` | `0` | Minimum required hits. |
+| `maxHits` | `∞` | Maximum allowed hits. |
+| `movePredTime` | `0` | Position prediction time. |
+| `sort` | hits desc | Candidate sorting function. |
+| `ignoreHitCount` | `false` | Skip hit evaluation. |
+| `ignoreEnemies` | `false` | Exclude enemies from hit counting. |
+| `ignoreFriends` | `false` | Exclude friends from hit counting. |
+| `filter` | `nil` | `(unit) -> bool` hit filter. |
 
 ### `spell:AoECast(position, overwrites?)`
-Raw spell cast at given position.
+
+Performs a raw ground-targeted cast at the supplied position.
 
 ### `spell:FastAoE(unit, options?)`
 
-Lightweight alternative to `SmartAoE` for single-target ground placement near a unit.
+A lightweight alternative to `SmartAoE` for placing a ground spell near one unit.
 
-1. Runs `Castable(unit)` when input is a unit
-2. Resolves unit to position (with optional `options.movePredTime` prediction)
-3. Picks a random offset within `radius / 2`
-4. Validates: target still in radius, player LoS, player in spell range
-5. Calls `AoECast` on success
+It:
+
+1. Checks `Castable(unit)`.
+2. Resolves the unit to a position.
+3. Optionally predicts the position.
+4. Tries a random offset within `radius / 2`.
+5. Checks radius, line of sight, and range.
+6. Calls `AoECast()` on success.
+
+Options:
 
 | Option | Default | Description |
-|--------|---------|-------------|
-| `radius` | `self.radius` or `5` | Placement variance and target check radius |
-| `range` | `self.range` or `0` | Max cast range from player |
-| `movePredTime` | nil | Unit position prediction |
+|---|---:|---|
+| `radius` | `self.radius` or `5` | Placement variance and target radius. |
+| `range` | `self.range` or `0` | Maximum cast range. |
+| `movePredTime` | `nil` | Position prediction time. |
 
-Retries up to 10 times with uncached random offsets.
+It retries up to 10 times using uncached random offsets.
 
----
+## Temporary Overrides
 
-## Full property index
+`Cast()` and AoE methods accept temporary attribute overrides. The original spell attributes are restored after the operation.
 
-<details>
-<summary>52 properties (click to expand)</summary>
+```lua
+spell:Cast(target, {
+    ignoreFacing = true,
+})
+```
 
-baseCD
-beneficial
-cancelCatForm
-castByID
-castLength
-cc
-charges
-chargesFrac
-cost
-count
-cd
-curseDispell
-current
-damage
-magicDispell
-effect
-face
-fullRechargeTime
-heading
-heal
-ignoreCasting
-ignoreChanneling
-ignoreControl
-ignoreDirectionalImmunity
-ignoreEnemies
-ignoreFacing
-ignoreGCD
-ignoreLoS
-ignoreMoving
-ignorePreCast
-ignorePreCastWindow
-ignoreStun
-interrupt
-jump
-jumpOrMove
-known
-maxCharges
-maxHits
-minHits
-minRange
-maxRange
-nextChargeCD
-noMana
-offsetMax
-offsetMin
-poisonDispell
-radius
-range
-stopMoving
-usable
+## Debugging
 
-</details>
+To log cast attempts:
 
----
+```lua
+vayn.print_cast_attempts = true
+```
 
-## Full method index
+For failed `Castable()` checks:
 
-<details>
-<summary>Core + AoE methods (click to expand)</summary>
+```lua
+vayn.debug = true
+```
 
-Callback
-Callbacks
-Cast
-Castable
-New
-SmartAoE
-GetSmartAoEPosition
-EvaluateAoEPosition
-AoECast
-ClickGround
-FastAoE
+`vayn.debug` can also accept a search string.
 
-</details>
+`vayn.preCastWindow` controls how close a spell can be to becoming available while still being queued/cast, depending on its attributes.
 
----
-
-
----
-
-## Notes
-
-- **`vayn.preCastWindow`**: Spells with CD remaining within this window can still be queued/cast depending on attributes.
-- **Overwrites**: Both `Cast` and AoE methods accept a temporary attribute override table; methods restore original values after casting.
-- **Debug**: Set `vayn.print_cast_attempts = true` to log cast attempts; failed `Castable` checks log via `vayn.debug = true` (Can also take a search string).
----
 
 # Unit API
 
-The `unit` module (`frame/unit.lua`) is the core object wrapper around WoW game objects in vayn. Every entity the rotation logic cares about — players, NPCs, pets, totems, and game objects — is represented as a **unit** instance with a rich property and method API.
+A `unit` represents a WoW game object used by the rotation. Players, NPCs, pets, totems, and game objects are exposed through the same interface.
 
-Global shortcuts like `vayn.player`, `vayn.target`, and list members (`vayn.enemies`, `vayn.fgroup`, etc.) all resolve to unit instances.
+Common unit references include `vayn.player`, `vayn.target`, and members of unit lists such as `vayn.enemies`.
 
----
-
-## Quick start
+## Quick Start
 
 ```lua
--- Player health as a percentage (0–100)
+-- Health
 if vayn.player.hp < 50 then
     -- heal logic
 end
 
--- Check a debuff on target by spell ID or name
-if vayn.target.debuff(703) then          -- Garrote by ID
+-- Aura
+if vayn.target.debuff(703) then
     local remains = vayn.target.debuffRemains(703)
 end
 
--- Distance and line of sight relative to the player
+-- Range and line of sight
 if vayn.target.distance < 8 and vayn.target.los then
-    -- in range and visible
+    -- target is in range and visible
 end
 
--- CC state
+-- Crowd control
 if vayn.target.stun then
-    local dr = vayn.target.stunDR          -- diminishing returns multiplier
-    local left = vayn.target.stunRemains     -- seconds remaining
+    local dr = vayn.target.stunDR
+    local remains = vayn.target.stunRemains
 end
 ```
 
----
+## Accessing Units
 
-## Access model
-There are three access styles:
+### Properties
 
-### 1. Properties (read-only)
+Properties are read directly:
+
 ```lua
 vayn.target.hp
 vayn.target.enemy
 vayn.target.casting
 ```
 
-When the underlying object no longer exists, many properties return safe defaults from `defaultReturns` (e.g. `hp = 100`, `distance = math.huge`).
+Many properties provide safe defaults when the underlying object no longer exists. For example, `hp` defaults to `100` and `distance` to `math.huge`.
 
-### 2. Methods (callable)
+### Methods
 
-Accessed with parentheses. Implemented in `functionMap`. The metamethod wraps them so extra arguments are forwarded.
+Methods are called with parentheses:
 
 ```lua
-vayn.target.buff(45438)                    -- Ice Block
+vayn.target.buff(45438)
 vayn.target.distanceTo(vayn.player)
-vayn.enemies.within(40).find(function(u) return u.viableEnemy end)
+vayn.enemies.within(40).find(function(unit)
+    return unit.viableEnemy
+end)
 ```
 
-When the object is missing, method calls return safe stubs (e.g. `buffRemains()` → `0`, `distanceTo()` → `math.huge`).
+Missing units return safe method stubs where applicable, such as `buffRemains()` returning `0` and `distanceTo()` returning `math.huge`.
 
-### 3. Direct instance methods
-
-Defined on the unit table itself:
+### Direct Unit Methods
 
 | Method | Description |
-|--------|-------------|
-| `unit:Interact()` | Calls `ObjectInteract` if the unit exists |
-| `unit:SetTarget()` | Targets the unit via `TargetUnit` if not already targeted |
----
+|---|---|
+| `unit:Interact()` | Calls `ObjectInteract` if the unit exists. |
+| `unit:SetTarget()` | Targets the unit if it is not already targeted. |
 
-## Identity & existence
-
-| Property | Returns |
-|----------|---------|
-| `exists` | Whether the WGG object still exists |
-| `valid` | `omToken` is set and object exists |
-| `alive` / `dead` | Life state (Feign Death on hunters is treated as alive) |
-| `name` | Object name, or `"Unknown"` |
-| `id` | NPC/object ID |
-| `guid` | WGG GUID |
-| `type` / `typeName` | Object type index and label (`Player`, `Unit`, `GameObject`, …) |
-| `omToken` | Token string for WoW API |
-| `uptime` / `existsSince` | Seconds since unit wrapper was created |
-| `player` | Whether the unit is a player character |
-| `pet` / `battlePet` / `totem` | Pet-related checks |
-| `level` | Unit level |
----
-
-## Faction & targeting
-
-| Property | Returns |
-|----------|---------|
-| `enemy` | Can the player attack this unit? |
-| `friend` | Is this unit friendly to the player? |
-| `target` | Unit wrapper for this unit's target |
-| `creator` | Unit wrapper for the object's creator |
-| `viable` / `viableEnemy` / `viableFriend` | Combat-viability filters (LoS, alive, player-only checks) |
-| `combat` / `combatTime` | In-combat state and duration |
-| `los` | Line of sight from player to this unit (`vayn.player.losTo(self)`) |
-
-### Methods
-
-| Method | Description |
-|--------|-------------|
-| `isUnit(other)` | Same unit comparison |
-| `isTarget()` | Whether this unit is the current target |
-| `enemyTo(other)` / `friendTo(other)` | Faction relative to another unit |
-| `losTo(other)` / `losToRaw(other)` | Line of sight to another unit |
-| `losToPosition(pos)` / `losToPositionRaw(pos)` | LoS to `{x, y, z}` |
-| `losOf(other)` | Inverse of `other.losTo(self)` |
-| `icewallObstructingLosTo(unit)` | Whether an Ice Wall blocks LoS |
-| `smokebombObstructingLosTo(unit)` | Whether a Smoke Bomb blocks LoS |
-| `predictLos(other, time)` | Predicted LoS after `time` seconds |
-
----
-
-## Position, movement & range
-
-| Property | Returns |
-|----------|---------|
-| `position` | `{x, y, z}` table |
-| `positionRaw` | Raw `x, y, z` from `ObjectPosition` |
-| `x` / `y` / `z` | Individual coordinates |
-| `rotation` | Facing angle (radians) |
-| `distance` | 3D distance from player |
-| `distance2D` | 2D distance from player |
-| `combatReach` | Object combat reach |
-| `meleeRange` | Calculated melee range including reach and lag buffer |
-| `speed` / `maxSpeed` | Current and run speed |
-| `moving` | `speed > 0` |
-| `timeStandingStill` | Seconds standing still |
-| `altitude` | Height above ground |
-| `timeToUnit` / `timeToUnitRaw` | Estimated intercept time from player |
-| `trapTravelTime` | Estimated trap travel time at 19.281 yds/s |
-| `averageRange` | Spec-based average engagement range |
-
-### Movement flags
-
-Boolean properties backed by `MovementFlags`: `movingForward`, `movingBackward`, `stravingLeft`, `stravingRight`, `turningLeft`, `turningRight`, `falling`, `fallingFar`, `swimming`, `flying`, `canFly`, `ascending`, `descending`, `levitating`, `onTransport`, and their `*Pending` variants.
-
-| Method | Description |
-|--------|-------------|
-| `distanceTo(unit)` / `distance2DTo(unit)` | Distance to another unit |
-| `distanceToPosition(pos)` / `distance2DToPosition(pos)` | Distance to a point |
-| `predictDistance(time)` / `predictDistance2D(time)` | Predicted distance after `time` |
-| `predictDistanceTo(unit, time)` | Predicted distance to unit |
-| `predictPosition(time)` | Predicted `{x, y, z}` |
-| `movingTowards(unit)` / `movingAwayFrom(unit)` | Movement direction relative to unit |
-| `hasMovementFlag(flag)` | Test a `MovementFlags` value |
-| `facing(unit, options?)` | Whether `unit` is within facing cone (default 180°) |
-| `facing45(unit)` / `facing90(unit)` | 45° / 90° cone variants |
-| `behind(unit)` | Whether this unit is behind `unit` |
-| `angleTo(unit)` | Angle to another unit |
-| `setFace(unit?)` / `SetFacing(unit?)` | Face a unit or numeric angle |
-
----
-
-## Health & absorbs
-
-| Property | Returns |
-|----------|---------|
-| `health` | Raw health |
-| `maxHealth` | Maximum health |
-| `hp` | Health percentage (0–100) |
-| `hpa` | Effective health percentage including absorbs minus heal absorbs |
-| `realHealth` | `health - healAbsorb + absorb` |
-| `healthMissing` / `hpMissing` / `realHealthMissing` | Missing health variants |
-| `healAbsorb` | Total heal absorption |
-| `absorb` | Total damage absorption shields |
-| `guardianSpirit` | Guardian Spirit buff (with heal-event tracking) |
-
----
-
-## Casting & channels
-
-| Property | Returns |
-|----------|---------|
-| `casting` | Cast spell name, or nil |
-| `castID` | Cast spell ID |
-| `castTimeRemains` / `castTimeComplete` | Cast timing (seconds) |
-| `castPct` / `castPctRemains` | Cast progress percentage |
-| `channeling` | Channel spell name, or `false` |
-| `channelID` | Channel spell ID |
-| `channelTimeRemains` / `channelTimeComplete` | Channel timing |
-| `channelPct` / `channelPctRemains` | Channel progress percentage |
-| `castTarget` | Unit being cast at |
-| `canCastWhileMoving` | Has a cast-while-moving buff |
-| `lastCast` | Last recorded cast spell ID |
-| `gcd` | Remaining GCD (**player only**) |
-| `maxGCD` | Maximum GCD for this unit's spec/haste |
-
-### Methods
-
-| Method | Description |
-|--------|-------------|
-| `recentlyCast(spellID, window?)` | Cast within time window |
-| `recentlyCastTime(spellID)` | Time since cast |
-| `cooldown(spellID)` | Remaining tracked cooldown from `vayn.ids.trackedCDs` |
-| `canCastOverlappingSpell()` / `setOverlappingSpell()` | Overlapping cast window helpers |
-
----
-
-## Crowd control
-
-CC is detected via aura tables in `vayn.ids.cc`. Most CC properties return an **aura object** (truthy) or `nil`/`false`.
-
-### CC categories
-
-| Property | Type |
-|----------|------|
-| `stun` / `incap` / `disorient` / `fear` / `horror` / `mindcontrol` | Hard CC |
-| `cyclone` / `sleep` / `charmed` | Special CC |
-| `disarm` / `root` / `slow` / `silence` | Soft CC |
-| `bcc` | Breakable CC (incap, breakable stun/disorient/fear/horror) |
-| `vbcc` | Valuable breakable CC |
-| `hardcc` | Non-breakable hard CC |
-| `cc` | Role-aware CC summary (varies by caster/healer/melee) |
-| `longestCC` | Longest active CC aura |
-| `incomingCC` / `incomingCCRemains` | Predicted incoming CC from cast target |
-
-Each category has matching `*Remains`, `*Uptime`, and (where applicable) `*DR` / `*DRRemains` properties.
-
-### Diminishing returns
-
-DR is tracked per category: `stunDR`, `incapDR`, `disorientDR`, `fearDR`, `horrorDR`, `cycloneDR`, `disarmDR`, `rootDR`, `silenceDR`, `knockbackDR` and their `*Remains` counterparts. Values follow WoW DR tiers (1 → 0.5 → 0.25 → 0).
+## Identity & Existence
 
 | Property | Description |
-|----------|-------------|
-| `stunBreak` | Whether a stun break effect is active |
-| `safe` | Unit is in a "safe" state (major defensives, CC, etc.) |
+|---|---|
+| `exists` | Whether the WGG object exists. |
+| `valid` | Whether `omToken` is set and the object exists. |
+| `alive` / `dead` | Life state. Feign Death is treated as alive. |
+| `name` | Object name, or `"Unknown"`. |
+| `id` | NPC/object ID. |
+| `guid` | WGG GUID. |
+| `type` / `typeName` | Object type index and label. |
+| `omToken` | WoW object token. |
+| `uptime` / `existsSince` | Time since the wrapper was created. |
+| `player` | Whether the unit is a player. |
+| `pet` / `battlePet` / `totem` | Pet/totem checks. |
+| `level` | Unit level. |
 
----
+## Faction & Targeting
+
+| Property | Description |
+|---|---|
+| `enemy` | Whether the player can attack the unit. |
+| `friend` | Whether the unit is friendly to the player. |
+| `target` | The unit's current target. |
+| `creator` | The object's creator. |
+| `viable` / `viableEnemy` / `viableFriend` | Combat viability filters. |
+| `combat` / `combatTime` | Combat state and duration. |
+| `los` | Line of sight from the player. |
+
+### Methods
+
+| Method | Description |
+|---|---|
+| `isUnit(other)` | Compares two units. |
+| `isTarget()` | Checks whether this is the current target. |
+| `enemyTo(other)` / `friendTo(other)` | Faction relative to another unit. |
+| `losTo(other)` / `losToRaw(other)` | Line of sight to another unit. |
+| `losToPosition(pos)` / `losToPositionRaw(pos)` | Line of sight to `{x, y, z}`. |
+| `losOf(other)` | Inverse of `other.losTo(self)`. |
+| `icewallObstructingLosTo(unit)` | Checks for an Ice Wall obstruction. |
+| `smokebombObstructingLosTo(unit)` | Checks for a Smoke Bomb obstruction. |
+| `predictLos(other, time)` | Predicts line of sight after `time` seconds. |
+
+## Position & Movement
+
+| Property | Description |
+|---|---|
+| `position` | `{x, y, z}` position. |
+| `positionRaw` | Raw position from `ObjectPosition`. |
+| `x` / `y` / `z` | Individual coordinates. |
+| `rotation` | Facing angle in radians. |
+| `distance` | 3D distance from the player. |
+| `distance2D` | 2D distance from the player. |
+| `combatReach` | Object combat reach. |
+| `meleeRange` | Melee range including reach and lag buffer. |
+| `speed` / `maxSpeed` | Current and maximum movement speed. |
+| `moving` | Whether `speed > 0`. |
+| `timeStandingStill` | Time spent standing still. |
+| `altitude` | Height above ground. |
+| `timeToUnit` / `timeToUnitRaw` | Estimated intercept time. |
+| `trapTravelTime` | Estimated trap travel time at 19.281 yds/s. |
+| `averageRange` | Spec-based average engagement range. |
+
+### Movement Flags
+
+Movement flags include:
+
+`movingForward`, `movingBackward`, `stravingLeft`, `stravingRight`, `turningLeft`, `turningRight`, `falling`, `fallingFar`, `swimming`, `flying`, `canFly`, `ascending`, `descending`, `levitating`, `onTransport`
+
+Most also have a corresponding `*Pending` variant.
+
+### Methods
+
+| Method | Description |
+|---|---|
+| `distanceTo(unit)` / `distance2DTo(unit)` | Distance to another unit. |
+| `distanceToPosition(pos)` / `distance2DToPosition(pos)` | Distance to a position. |
+| `predictDistance(time)` / `predictDistance2D(time)` | Predicted distance after `time`. |
+| `predictDistanceTo(unit, time)` | Predicted distance to a unit. |
+| `predictPosition(time)` | Predicted `{x, y, z}` position. |
+| `movingTowards(unit)` / `movingAwayFrom(unit)` | Movement direction relative to a unit. |
+| `hasMovementFlag(flag)` | Tests a `MovementFlags` value. |
+| `facing(unit, options?)` | Checks the facing cone; default is 180°. |
+| `facing45(unit)` / `facing90(unit)` | 45° / 90° facing checks. |
+| `behind(unit)` | Checks whether this unit is behind another. |
+| `angleTo(unit)` | Angle to another unit. |
+| `setFace(unit?)` / `SetFacing(unit?)` | Faces a unit or numeric angle. |
+
+### Distance to a Position
+
+```lua
+local distance = player.distanceToPosition({
+    x = 1,
+    y = 100,
+    z = 300,
+})
+```
+
+## Health & Absorbs
+
+| Property | Description |
+|---|---|
+| `health` | Raw health. |
+| `maxHealth` | Maximum health. |
+| `hp` | Health percentage, `0–100`. |
+| `hpa` | Effective health percentage including absorbs minus heal absorbs. |
+| `realHealth` | `health - healAbsorb + absorb`. |
+| `healthMissing` / `hpMissing` / `realHealthMissing` | Missing-health values. |
+| `healAbsorb` | Total heal absorption. |
+| `absorb` | Total damage absorption. |
+| `guardianSpirit` | Guardian Spirit state with heal-event tracking. |
+
+## Casting & Channels
+
+| Property | Description |
+|---|---|
+| `casting` | Cast spell name, or `nil`. |
+| `castID` | Cast spell ID. |
+| `castTimeRemains` / `castTimeComplete` | Cast timing. |
+| `castPct` / `castPctRemains` | Cast progress. |
+| `channeling` | Channel spell name, or `false`. |
+| `channelID` | Channel spell ID. |
+| `channelTimeRemains` / `channelTimeComplete` | Channel timing. |
+| `channelPct` / `channelPctRemains` | Channel progress. |
+| `castTarget` | Unit being cast at. |
+| `canCastWhileMoving` | Whether the unit has a cast-while-moving buff. |
+| `lastCast` | Last recorded cast ID. |
+| `gcd` | Remaining GCD; player only. |
+| `maxGCD` | Maximum GCD for the unit's spec/haste. |
+
+### Methods
+
+| Method | Description |
+|---|---|
+| `recentlyCast(spellID, window?)` | Whether the spell was cast within the window. |
+| `recentlyCastTime(spellID)` | Time since the spell was cast. |
+| `cooldown(spellID)` | Remaining tracked cooldown. |
+| `canCastOverlappingSpell()` / `setOverlappingSpell()` | Helpers for overlapping cast windows. |
+
+## Crowd Control
+
+CC is detected from the aura tables in `vayn.ids.cc`. Most CC properties return an aura object when active and `nil`/`false` otherwise.
+
+| Property | Description |
+|---|---|
+| `stun` / `incap` / `disorient` / `fear` / `horror` / `mindcontrol` | Hard CC. |
+| `cyclone` / `sleep` / `charmed` | Special CC. |
+| `disarm` / `root` / `slow` / `silence` | Soft CC. |
+| `bcc` | Breakable CC. |
+| `vbcc` | Valuable breakable CC. |
+| `hardcc` | Non-breakable hard CC. |
+| `cc` | Role-aware CC summary. |
+| `longestCC` | Longest active CC aura. |
+| `incomingCC` / `incomingCCRemains` | Predicted incoming CC. |
+
+CC categories also expose matching `*Remains` and `*Uptime` properties and, where applicable, `*DR` / `*DRRemains` properties.
+
+### Diminishing Returns
+
+DR values are tracked by category, including `stunDR`, `incapDR`, `disorientDR`, `fearDR`, `horrorDR`, `cycloneDR`, `disarmDR`, `rootDR`, `silenceDR`, and `knockbackDR`.
+
+Values follow the WoW DR tiers: `1 → 0.5 → 0.25 → 0`.
+
+| Property | Description |
+|---|---|
+| `stunBreak` | Whether a stun break effect is active. |
+| `safe` | Whether the unit is considered safe due to major defensives, CC, etc. |
 
 ## Immunities
 
-Immunities combine aura checks from `vayn.ids.immunities`, DR state, and untouchable CC debuffs. Each immunity has `*Remains` and `*Uptime` variants.
+Immunity properties combine aura checks, DR state, and untouchable CC debuffs. Immunity properties generally have matching `*Remains` and `*Uptime` variants.
 
-| Property | Checks |
-|----------|--------|
-| `physicalDamageImmunity` | Physical damage immunity |
-| `magicDamageImmunity` | Magic damage immunity |
-| `physicalEffectImmunity` | Physical effect immunity |
-| `magicEffectImmunity` | Magic effect immunity |
-| `directionalPhysicalDamageImmunity` | Directional physical immunity (e.g. Fists of Fury) |
-| `stunImmunity` / `incapImmunity` / `polymorphImmunity` | CC immunities |
-| `disorientImmunity` / `fearImmunity` | Disorient/fear immunities |
-| `disarmImmunity` / `rootImmunity` / `slowImmunity` | Soft CC immunities |
-| `silenceImmunity` / `interruptImmunity` / `knockbackImmunity` | Cast/interrupt immunities |
-| `healImmunity` / `beneficialImmunity` | Healing/beneficial immunities |
-| `untouchableCC` | Untouchable CC debuff |
-| `bccImmunity` | BCC immunity (Sac, SW:D, etc.) |
-
-Many aliases exist (see [Aliases](#aliases)).
-
----
+| Property | Description |
+|---|---|
+| `physicalDamageImmunity` | Physical damage immunity. |
+| `magicDamageImmunity` | Magic damage immunity. |
+| `physicalEffectImmunity` | Physical effect immunity. |
+| `magicEffectImmunity` | Magic effect immunity. |
+| `directionalPhysicalDamageImmunity` | Directional physical immunity. |
+| `stunImmunity` / `incapImmunity` / `polymorphImmunity` | CC immunities. |
+| `disorientImmunity` / `fearImmunity` | Disorient/fear immunities. |
+| `disarmImmunity` / `rootImmunity` / `slowImmunity` | Soft CC immunities. |
+| `silenceImmunity` / `interruptImmunity` / `knockbackImmunity` | Cast/interrupt immunities. |
+| `healImmunity` / `beneficialImmunity` | Healing/beneficial immunities. |
+| `untouchableCC` | Untouchable CC debuff. |
+| `bccImmunity` | BCC immunity. |
 
 ## Auras
+
 ### Methods
 
-| Method | Signature | Returns |
-|--------|-----------|---------|
-| `buff(id, creator?, uptime?)` | Spell ID or lowercase name | Longest matching aura object |
-| `debuff(id, creator?, uptime?)` | Spell ID or lowercase name | Longest matching aura object |
-| `buffFrom(table, creator?, uptime?)` | Table of spell IDs | First matching buff |
-| `debuffFrom(table, creator?, uptime?)` | Table of spell IDs | First matching debuff |
-| `buffRemains(id, creator?)` | | Seconds remaining |
-| `debuffRemains(id, creator?)` | | Seconds remaining |
-| `buffUptime(id, creator?)` | | Seconds active |
-| `debuffUptime(id, creator?)` | | Seconds active |
-| `buffStacks(id, creator?)` | | Stack count |
-| `debuffStacks(id, creator?)` | | Stack count |
-| `hiddenAura(id)` | Hidden/private aura ID | Aura table |
-| `hiddenAuraFrom(table)` | Table of IDs | First matching hidden aura |
-| `hiddenAuraRemains(id)` / `hiddenAuraUptime(id)` | | Timing helpers |
+| Method | Description |
+|---|---|
+| `buff(id, creator?, uptime?)` | Longest matching buff aura. Accepts spell ID or lowercase name. |
+| `debuff(id, creator?, uptime?)` | Longest matching debuff aura. |
+| `buffFrom(table, creator?, uptime?)` | First matching buff from a spell ID table. |
+| `debuffFrom(table, creator?, uptime?)` | First matching debuff from a spell ID table. |
+| `buffRemains(id, creator?)` | Buff time remaining. |
+| `debuffRemains(id, creator?)` | Debuff time remaining. |
+| `buffUptime(id, creator?)` | Buff uptime. |
+| `debuffUptime(id, creator?)` | Debuff uptime. |
+| `buffStacks(id, creator?)` | Buff stack count. |
+| `debuffStacks(id, creator?)` | Debuff stack count. |
+| `hiddenAura(id)` | Hidden/private aura. |
+| `hiddenAuraFrom(table)` | First matching hidden aura. |
+| `hiddenAuraRemains(id)` / `hiddenAuraUptime(id)` | Hidden-aura timing helpers. |
 
-Aura objects (from `vayn.aura:New`) expose `.remains`, `.uptime`, `.stacks`, `.creator`, `.id`, etc.
+Aura objects created by `vayn.aura:New` expose properties such as `.remains`, `.uptime`, `.stacks`, `.creator`, and `.id`.
 
-### Notable aura-based properties
+### Common Aura Properties
 
 | Property | Description |
-|----------|-------------|
-| `stealth` | Stealth buff from `vayn.ids.stealth` |
-| `bloodlust` | Bloodlust/Heroism |
-| `trinket` / `trinketRemains` | PvP trinket availability |
-| `humanRacial` / `humanRacialRemains` | Will to Survive tracking |
-| `defensiveCDs` / `majorDefensiveCDs` / `offensiveCDs` | CD aura groups (+ `*Uptime`) |
-| `purgable` | Stealable buff |
-| `dotted` | Has a bleed or DoT from `vayn.ids` |
-| `ams` | Anti-Magic Shell |
-| `smokeBomb` / `speared` / `searingGlare` | Arena-specific debuff checks |
+|---|---|
+| `stealth` | Stealth buff. |
+| `bloodlust` | Bloodlust/Heroism. |
+| `trinket` / `trinketRemains` | PvP trinket state. |
+| `humanRacial` / `humanRacialRemains` | Will to Survive tracking. |
+| `defensiveCDs` / `majorDefensiveCDs` / `offensiveCDs` | Cooldown aura groups. |
+| `purgable` | Stealable buff. |
+| `dotted` | Bleed/DoT from `vayn.ids`. |
+| `ams` | Anti-Magic Shell. |
+| `smokeBomb` / `speared` / `searingGlare` | Arena-specific debuff checks. |
 
----
+## Power & Resources
 
-## Power & resources
-
-Generic power methods:
+Generic resource methods:
 
 | Method | Description |
-|--------|-------------|
-| `power(type)` | Current power for `POWER_TYPES` index |
-| `powerMax(type)` | Maximum power |
-| `powerPct(type)` | Percentage (0–100) |
-| `powerDeficit(type)` | Missing power |
+|---|---|
+| `power(type)` | Current power for a `POWER_TYPES` index. |
+| `powerMax(type)` | Maximum power. |
+| `powerPct(type)` | Power percentage. |
+| `powerDeficit(type)` | Missing power. |
 
-Each resource type also has dedicated properties: `<resource>`, `<resource>Max`, `<resource>Pct`, `<resource>Deficit`.
+Each resource also exposes `<resource>`, `<resource>Max`, `<resource>Pct`, and `<resource>Deficit` properties where applicable.
 
-| Resource | Properties |
-|----------|------------|
+| Resource | Common properties |
+|---|---|
 | Mana | `mana`, `manaMax`, `manaPct`, `manaDeficit` |
-| Rage | `rage`, … |
-| Focus | `focus`, … |
-| Energy | `energy`, … |
-| Combo Points | `comboPoints`, `chargedComboPoints`, … |
+| Rage | `rage`, `rageMax`, `ragePct`, `rageDeficit` |
+| Focus | `focus`, `focusMax`, `focusPct`, `focusDeficit` |
+| Energy | `energy`, `energyMax`, `energyPct`, `energyDeficit` |
+| Combo Points | `comboPoints`, `comboPointsMax`, `comboPointsPct`, `comboPointsDeficit`, `chargedComboPoints` |
 | Runes | `runes`, `runesMax`, `runesPct`, `runesDeficit` |
-| Runic Power | `runicPower`, … |
-| Soul Shards | `soulShards`, `predictedSoulShards`, … |
-| Astral Power | `astralPower`, … |
-| Holy Power | `holyPower`, … |
-| Maelstrom | `maelstrom`, … |
-| Chi | `chi`, … |
-| Insanity | `insanity`, … |
-| Arcane Charges | `arcaneCharges`, … |
-| Fury | `fury` (DH or warrior context) |
-| Pain | `pain`, … |
-| Essence | `essence`, … |
-| Death Knight runes | `runeBlood`, `runeFrost`, `runeUnholy` (+ Max/Pct/Deficit) |
+| Runic Power | `runicPower`, `runicPowerMax`, `runicPowerPct`, `runicPowerDeficit` |
+| Soul Shards | `soulShards`, `soulShardsMax`, `soulShardsPct`, `soulShardsDeficit`, `predictedSoulShards` |
+| Astral Power | `astralPower`, `astralPowerMax`, `astralPowerPct`, `astralPowerDeficit` |
+| Holy Power | `holyPower`, `holyPowerMax`, `holyPowerPct`, `holyPowerDeficit` |
+| Maelstrom | `maelstrom`, `maelstromMax`, `maelstromPct`, `maelstromDeficit` |
+| Chi | `chi`, `chiMax`, `chiPct`, `chiDeficit` |
+| Insanity | `insanity`, `insanityMax`, `insanityPct`, `insanityDeficit` |
+| Arcane Charges | `arcaneCharges`, `arcaneChargesMax`, `arcaneChargesPct`, `arcaneChargesDeficit` |
+| Fury | `fury`, `furyMax`, `furyPct`, `furyDeficit` |
+| Pain | `pain`, `painMax`, `painPct`, `painDeficit` |
+| Essence | `essence`, `essenceMax`, `essencePct`, `essenceDeficit` |
+| DK Runes | `runeBlood`, `runeFrost`, `runeUnholy` and their Max/Pct/Deficit variants |
 
-Player-only: `powerRegen`, `basePowerRegen`, `combatPowerRegen`, `mounted`, `gcd`.
+Player-only resource properties include `powerRegen`, `basePowerRegen`, `combatPowerRegen`, `mounted`, and `gcd`.
 
----
+## Class, Spec & Role
 
-## Class, spec & role
+### Class
 
-### Class checks
+Boolean class properties include:
 
-Boolean properties: `warrior`, `paladin`, `hunter`, `rogue`, `priest`, `deathKnight`, `shaman`, `mage`, `warlock`, `monk`, `druid`, `demonHunter`, `evoker`.
+`warrior`, `paladin`, `hunter`, `rogue`, `priest`, `deathKnight`, `shaman`, `mage`, `warlock`, `monk`, `druid`, `demonHunter`, `evoker`
 
-`class1` / `class2` / `class3` return class index, English token, and localized name.
+`class1`, `class2`, and `class3` return the class index, English token, and localized name.
 
-### Spec checks
+### Specialization
 
-Boolean properties for every PvP-relevant spec, e.g. `armsWarrior`, `frostMage`, `restorationDruid`, `subtletyRogue`, `havocDemonhunter`, etc.
-
-| Property | Description |
-|----------|-------------|
-| `specID` | Specialization ID |
-| `specName` / `specNameShort` | Full and short spec names |
-| `specColor` | Spec color from `vayn.ids.specs` |
-
-### Role checks
+Every PvP-relevant specialization has a boolean property such as `armsWarrior`, `frostMage`, `restorationDruid`, `subtletyRogue`, and `havocDemonhunter`.
 
 | Property | Description |
-|----------|-------------|
-| `healer` / `dps` / `tank` | Spec-based role from `vayn.ids.specs` |
-| `melee` / `ranged` / `caster` | Range archetype |
-| `magicDPS` / `physicalDPS` | Damage type |
-| `healerRole` / `damageRole` / `tankRole` | WoW group role assignment |
-| `inGroup` / `raid` / `party` | Group membership |
+|---|---|
+| `specID` | Specialization ID. |
+| `specName` / `specNameShort` | Full and short specialization names. |
+| `specColor` | Specialization color from `vayn.ids.specs`. |
 
-### Race checks
-
-`race` returns the race name. Individual booleans: `human`, `orc`, `nightElf`, `bloodElf`, `undead`, `dwarf`, `gnome`, `draenei`, `worgen`, `pandaren`, `tauren`, `troll`, `goblin`, `voidElf`, `lightforgedDraenei`, `darkIronDwarf`, `kulTiran`, `mechagnome`, `nightborne`, `highmountainTauren`, `magharOrc`, `zandalariTroll`, `vulpera`, `dracthyr`.
-
----
-
-## Attackers & PvP utility
+### Role
 
 | Property | Description |
-|----------|-------------|
-| `attackers` | Total DPS attackers on this unit |
-| `meleeAttackers` | Melee attackers |
-| `rangedAttackers` | Ranged attackers |
-| `cooldownAttackers` | Attackers with offensive CDs active |
+|---|---|
+| `healer` / `dps` / `tank` | Spec-based role. |
+| `melee` / `ranged` / `caster` | Range archetype. |
+| `magicDPS` / `physicalDPS` | Damage type. |
+| `healerRole` / `damageRole` / `tankRole` | WoW group role. |
+| `inGroup` / `raid` / `party` | Group membership. |
+
+### Race
+
+`race` returns the race name. Race booleans include `human`, `orc`, `nightElf`, `bloodElf`, `undead`, `dwarf`, `gnome`, `draenei`, `worgen`, `pandaren`, `tauren`, `troll`, `goblin`, `voidElf`, `lightforgedDraenei`, `darkIronDwarf`, `kulTiran`, `mechagnome`, `nightborne`, `highmountainTauren`, `magharOrc`, `zandalariTroll`, `vulpera`, and `dracthyr`.
+
+## Attackers & PvP Utility
+
+| Property | Description |
+|---|---|
+| `attackers` | Total DPS attackers. |
+| `meleeAttackers` | Melee attackers. |
+| `rangedAttackers` | Ranged attackers. |
+| `cooldownAttackers` | Attackers with offensive cooldowns active. |
+| `fc` / `hasFlag` | Flag carrier. |
+| `orbOfPower` | Orb of Power buff. |
+| `capping` / `cappingRemains` | Node capping state. |
+| `drinking` | Drinking/regen state. |
+
+### `v2Attackers(option?, ignoreRange?)`
+
+Returns detailed attacker counts. Options include:
+
+- `"totalUnits"`
+- `"meleeUnits"`
+- `"rangedUnits"`
+- `"cooldowns"`
+- `"magic"`
+
+Depending on the option, it returns a count or `(melee, ranged, cds, total)`.
+
+## World Objects
+
+| Property | Description |
+|---|---|
+| `gatherable` | Herb/ore node that is not depleted. |
+| `lootable` | Can be looted. |
+| `skinnable` | Can be skinned. |
+| `tapDenied` | Mob tap is denied. |
+| `creatureType` | Creature type such as `"Humanoid"` or `"Beast"`. |
+| `humanoid` / `beast` / `critter` / `undead` | Creature-type shortcuts. |
+| `outdoors` | Placeholder; currently always `false`. |
+| `locked` | Placeholder; currently always `false`. |
+
+## Talents & Totems
 
 | Method | Description |
-|--------|-------------|
-| `v2Attackers(option?, ignoreRange?)` | Detailed attacker counts. Options: `"totalUnits"`, `"meleeUnits"`, `"rangedUnits"`, `"cooldowns"`, `"magic"`. Returns count or `(melee, ranged, cds, total)` |
+|---|---|
+| `hasTalent(talentID)` | Checks whether the unit has a talent. |
+| `hasTotem(totemID)` | Checks whether the unit has a totem. |
 
-| Property | Description |
-|----------|-------------|
-| `fc` / `hasFlag` | Flag carrier |
-| `orbOfPower` | Orb of Power buff |
-| `capping` / `cappingRemains` | Node capping hidden aura |
-| `drinking` | Drinking regen buff |
-
----
-
-## World objects
-
-Properties for non-combat interactions:
-
-| Property | Description |
-|----------|-------------|
-| `gatherable` | Herb/ore node not depleted |
-| `lootable` | Can be looted |
-| `skinnable` | Can be skinned |
-| `tapDenied` | Tap denied on mob |
-| `creatureType` | `"Humanoid"`, `"Beast"`, etc. |
-| `humanoid` / `beast` / `critter` / `undead` | Creature type shortcuts |
-| `outdoors` | Currently always `false` (placeholder) |
-| `locked` | Placeholder, always `false` |
-
----
-
-## Talents & totems
-
-| Method | Description |
-|--------|-------------|
-| `hasTalent(talentID)` | Whether the unit has a talent |
-| `hasTotem(totemID)` | Whether the unit has a totem |
-
-Alias: `talent` → `hasTalent`.
-
----
+`talent` is an alias for `hasTalent`.
 
 ## Aliases
 
-The module registers **189 property aliases** and several method aliases for backwards compatibility and shorthand. Aliases point to the canonical property/method and behave identically.
-
-Common examples:
+Aliases exist for shorthand and backwards compatibility. They behave the same as their canonical properties or methods.
 
 | Alias | Canonical |
-|-------|-----------|
+|---|---|
 | `healthPercent` | `hp` |
 | `realHealthPercent` | `hpa` |
 | `dist` / `distance2d` | `distance` / `distance2D` |
@@ -932,12 +877,12 @@ Common examples:
 | `friendly` | `friend` |
 | `source` | `creator` |
 | `isFC` / `isDummy` | `fc` / `dummy` |
-| `dk` / `frostdk` / `sub` / `disc` | class/spec shortcuts |
+| `dk` / `frostdk` / `sub` / `disc` | Class/spec shortcuts |
 
-Method aliases:
+### Method aliases
 
 | Alias | Canonical |
-|-------|-----------|
+|---|---|
 | `distanceToUnit` | `distanceTo` |
 | `distanceToPoint` | `distanceToPosition` |
 | `movingTo` / `isMovingTowards` | `movingTowards` |
@@ -945,490 +890,1192 @@ Method aliases:
 | `v2attackers` | `v2Attackers` |
 | `predictLoS` | `predictLos` |
 
-Accessing an unknown property throws: `Unit property <name> not found`.
+Accessing an unknown property throws `Unit property <name> not found`.
+
+## Player-only APIs
+
+Some APIs are only valid on the player, including `gcd`, `mounted`, and power regeneration properties. Calling these on non-player units can call `vayn.error` or `error()`.
+
+## Missing Units
+
+The unit metatable provides safe defaults for many properties when an object no longer exists, allowing rotation code to avoid repetitive nil checks.
+
+# Macro System
+
+Macros are temporary flags set through slash commands.
+
+### Registering a Macro
+
+```lua
+vayn.RegisterMacro("burst", 1)
+```
+
+The second argument is the duration in seconds.
+
+### Checking a Macro
+
+```lua
+if not vayn.MacrosQueued["burst"] then return end
+```
+
+### Using the Macro In-Game
+
+```text
+/username burst
+```
+
+# Timing & Humanization
+
+## Delays
+
+Create a randomized delay with `vayn.delay()`:
+
+```lua
+local delay = vayn.delay(0.2, 0.4, 5)
+```
+
+This creates a delay between `0.2` and `0.4` seconds and changes the selected value every `5` seconds.
+
+Use the current delay with `.now`:
+
+```lua
+if target.buffUptime(123) < delay.now then return end
+```
+
+## Debounce
+
+`vayn.debounce()` tracks time from when a decision first becomes viable rather than depending on the conditions remaining true.
+
+```lua
+return vayn.debounce(
+    spell.name,
+    vayn.around3.now,
+    5,
+    function()
+        return spell:Cast(player)
+    end
+)
+```
+
+Signature:
+
+```lua
+vayn.debounce(key, min, reset, func)
+```
+
+| Argument | Description |
+|---|---|
+| `key` | Unique identifier for the debounce. |
+| `min` | Minimum time before the function can execute. |
+| `reset` | Time after which the debounce state is forgotten. |
+| `func` | Function to execute. |
+
+# Reference
+
+The sections below contain the complete property and method indexes. Use the categorized sections above for normal development; use these indexes when looking for an API name.
+
+## Full property index
+
+<details>
+
+<summary>52 properties (click to expand)</summary>
+
+baseCD
+
+beneficial
+
+cancelCatForm
+
+castByID
+
+castLength
+
+cc
+
+charges
+
+chargesFrac
+
+cost
+
+count
+
+cd
+
+curseDispell
+
+current
+
+damage
+
+magicDispell
+
+effect
+
+face
+
+fullRechargeTime
+
+heading
+
+heal
+
+ignoreCasting
+
+ignoreChanneling
+
+ignoreControl
+
+ignoreDirectionalImmunity
+
+ignoreEnemies
+
+ignoreFacing
+
+ignoreGCD
+
+ignoreLoS
+
+ignoreMoving
+
+ignorePreCast
+
+ignorePreCastWindow
+
+ignoreStun
+
+interrupt
+
+jump
+
+jumpOrMove
+
+known
+
+maxCharges
+
+maxHits
+
+minHits
+
+minRange
+
+maxRange
+
+nextChargeCD
+
+noMana
+
+offsetMax
+
+offsetMin
+
+poisonDispell
+
+radius
+
+range
+
+stopMoving
+
+usable
+
+</details>
+
+---
+
+## Full method index
+
+<details>
+
+<summary>Core + AoE methods (click to expand)</summary>
+
+Callback
+
+Callbacks
+
+Cast
+
+Castable
+
+New
+
+SmartAoE
+
+GetSmartAoEPosition
+
+EvaluateAoEPosition
+
+AoECast
+
+ClickGround
+
+FastAoE
+
+</details>
+
+---
+
+
 
 ---
 
 ## Full property index
 
 <details>
+
 <summary>476 properties (click to expand)</summary>
 
 absorb
+
 afflictionWarlock
+
 alive
+
 altitude
+
 ams
+
 arcaneCharges
+
 arcaneChargesDeficit
+
 arcaneChargesMax
+
 arcaneChargesPct
+
 arcaneMage
+
 armsWarrior
+
 ascending
+
 assassinationRogue
+
 astralPower
+
 astralPowerDeficit
+
 astralPowerMax
+
 astralPowerPct
+
 attackers
+
 augmentationEvoker
+
 auraInfo
+
 averageRange
+
 balanceDruid
+
 base
+
 basePowerRegen
+
 baseRegen
+
 battlePet
+
 bcc
+
 bccImmunity
+
 bccImmunityRemains
+
 bccRemains
+
 beast
+
 beastmasteryHunter
+
 beneficialImmunity
+
 beneficialImmunityRemains
+
 beneficialImmunityUptime
+
 bloodDeathknight
+
 bloodElf
+
 bloodlust
+
 brewmasterMonk
+
 canCastWhileMoving
+
 canFly
+
 capping
+
 cappingRemains
+
 caster
+
 castID
+
 casting
+
 castPct
+
 castPctRemains
+
 castTarget
+
 castTimeComplete
+
 castTimeRemains
+
 cc
+
 ccRemains
+
 ccUptime
+
 channelID
+
 channeling
+
 channelName
+
 channelNotInterruptible
+
 channelPct
+
 channelPctRemains
+
 channelTimeComplete
+
 channelTimeRemains
+
 chargedComboPoints
+
 chargedCPs
+
 charmed
+
 charmedRemains
+
 charmedUptime
+
 chi
+
 chiDeficit
+
 chiMax
+
 chiPct
+
 class1
+
 class2
+
 class3
+
 combat
+
 combatPowerRegen
+
 combatReach
+
 combatRegen
+
 combatTime
+
 comboPoints
+
 comboPointsDeficit
+
 comboPointsMax
+
 comboPointsPct
+
 cooldownAttackers
+
 creator
+
 creatureType
+
 critter
+
 cyclone
+
 cycloneDR
+
 cycloneDRRemains
+
 cycloneRemains
+
 cycloneUptime
+
 damageRole
+
 darkIronDwarf
+
 dead
+
 deathKnight
+
 defensiveCDs
+
 defensiveCDsUptime
+
 demonHunter
+
 demonologyWarlock
+
 descending
+
 destructionWarlock
+
 devastationEvoker
+
 directionalPhysicalDamageImmunity
+
 directionalPhysicalDamageImmunityRemains
+
 directionalPhysicalDamageImmunityUptime
+
 disarm
+
 disarmDR
+
 disarmDRRemains
+
 disarmImmunity
+
 disarmImmunityRemains
+
 disarmImmunityUptime
+
 disarmRemains
+
 disarmUptime
+
 disciplinePriest
+
 disorient
+
 disorientDR
+
 disorientDRRemains
+
 disorientImmunity
+
 disorientImmunityRemains
+
 disorientImmunityUptime
+
 disorientRemains
+
 disorientUptime
+
 distance
+
 distance2D
+
 dotted
+
 dps
+
 dracthyr
+
 draenei
+
 drDuration
+
 drinking
+
 druid
+
 dummy
+
 duration
+
 dwarf
+
 elementalShaman
+
 endTime
+
 endTimeMS
+
 enemy
+
 enemyTo
+
 energy
+
 energyDeficit
+
 energyMax
+
 energyPct
+
 enhancementShaman
+
 essence
+
 essenceDeficit
+
 essenceMax
+
 essencePct
+
 evoker
+
 exists
+
 existsSince
+
 falling
+
 fallingFar
+
 fc
+
 fear
+
 fearDR
+
 fearDRRemains
+
 fearImmunity
+
 fearImmunityRemains
+
 fearImmunityUptime
+
 fearRemains
+
 fearUptime
+
 feralDruid
+
 fireMage
+
 flying
+
 focus
+
 focusDeficit
+
 focusMax
+
 focusPct
+
 friend
+
 friendTo
+
 frostDeathknight
+
 frostMage
+
 fury
+
 furyDeficit
+
 furyMax
+
 furyPct
+
 furyWarrior
+
 gatherable
+
 gcd
+
 gnome
+
 goblin
+
 guardianDruid
+
 guardianSpirit
+
 guid
+
 hardcc
+
 hasFlag
+
 haste
+
 havocDemonhunter
+
 healAbsorb
+
 healer
+
 healerRole
+
 healImmunity
+
 healImmunityRemains
+
 healImmunityUptime
+
 health
+
 healthMissing
+
 highmountainTauren
+
 holyPaladin
+
 holyPower
+
 holyPowerDeficit
+
 holyPowerMax
+
 holyPowerPct
+
 holyPriest
+
 horror
+
 horrorDR
+
 horrorDRRemains
+
 horrorRemains
+
 horrorUptime
+
 hp
+
 hpa
+
 hpMissing
+
 human
+
 humanoid
+
 humanRacial
+
 humanRacialRemains
+
 hunter
+
 id
+
 incap
+
 incapDR
+
 incapDRRemains
+
 incapImmunity
+
 incapImmunityRemains
+
 incapImmunityUptime
+
 incapRemains
+
 incapUptime
+
 incomingCC
+
 incomingCCRemains
+
 inGroup
+
 insanity
+
 insanityDeficit
+
 insanityMax
+
 insanityPct
+
 interruptImmunity
+
 interruptImmunityRemains
+
 interruptImmunityUptime
+
 knockbackDR
+
 knockbackDRRemains
+
 knockbackImmunity
+
 knockbackImmunityRemains
+
 knockbackImmunityUptime
+
 kulTiran
+
 lastCast
+
 lastTrinketUse
+
 level
+
 levitating
+
 lightforgedDraenei
+
 locked
+
 longestCC
+
 lootable
+
 los
+
 maelstrom
+
 maelstromDeficit
+
 maelstromMax
+
 maelstromPct
+
 mage
+
 magharOrc
+
 magicDamageImmunity
+
 magicDamageImmunityRemains
+
 magicDamageImmunityUptime
+
 magicDPS
+
 magicEffectImmunity
+
 magicEffectImmunityRemains
+
 magicEffectImmunityUptime
+
 majorDefensiveCDs
+
 majorDefensiveCDsUptime
+
 mana
+
 manaDeficit
+
 manaMax
+
 manaPct
+
 marksmanshipHunter
+
 maxGCD
+
 maxHealth
+
 maxRemaining
+
 maxSpeed
+
 mechagnome
+
 melee
+
 meleeAttackers
+
 meleeRange
+
 mindcontrol
+
 mindcontrolRemains
+
 mindcontrolUptime
+
 mistweaverMonk
+
 monk
+
 mounted
+
 movementFlag
+
 moving
+
 movingBackward
+
 movingBackwardPending
+
 movingForward
+
 movingForwardPending
+
 name
+
 nightborne
+
 nightElf
+
 notInterruptible
+
 offensiveCDs
+
 offensiveCDsUptime
+
 omToken
+
 onTransport
+
 orbOfPower
+
 orc
+
 outdoors
+
 outlawRogue
+
 pain
+
 painDeficit
+
 painMax
+
 painPct
+
 paladin
+
 pandaren
+
 party
+
 pet
+
 physicalDamageImmunity
+
 physicalDamageImmunityRemains
+
 physicalDamageImmunityUptime
+
 physicalDPS
+
 physicalEffectImmunity
+
 physicalEffectImmunityRemains
+
 physicalEffectImmunityUptime
+
 player
+
 polymorphImmunity
+
 polymorphImmunityRemains
+
 polymorphImmunityUptime
+
 position
+
 positionRaw
+
 powerRegen
+
 powerType
+
 predictedSoulShards
+
 preservationEvoker
+
 priest
+
 protectionPaladin
+
 protectionWarrior
+
 purgable
+
 race
+
 racialRemaining
+
 rage
+
 rageDeficit
+
 rageMax
+
 ragePct
+
 raid
+
 ranged
+
 rangedAttackers
+
 ready
+
 realHealth
+
 realHealthMissing
+
 restorationDruid
+
 restorationShaman
+
 retributionPaladin
+
 rogue
+
 role
+
 root
+
 rootDR
+
 rootDRRemains
+
 rootImmunity
+
 rootImmunityRemains
+
 rootImmunityUptime
+
 rootRemains
+
 rootUptime
+
 rotation
+
 runeBlood
+
 runeBloodDeficit
+
 runeBloodMax
+
 runeBloodPct
+
 runeFrost
+
 runeFrostDeficit
+
 runeFrostMax
+
 runeFrostPct
+
 runes
+
 runesDeficit
+
 runesMax
+
 runesPct
+
 runeUnholy
+
 runeUnholyDeficit
+
 runeUnholyMax
+
 runeUnholyPct
+
 runicPower
+
 runicPowerDeficit
+
 runicPowerMax
+
 runicPowerPct
+
 safe
+
 searingGlare
+
 shadowPriest
+
 shaman
+
 sharedRemaining
+
 silence
+
 silenceDR
+
 silenceDRRemains
+
 silenceImmunity
+
 silenceImmunityRemains
+
 silenceImmunityUptime
+
 silenceRemains
+
 silenceUptime
+
 skinnable
+
 sleep
+
 sleepRemains
+
 sleepUptime
+
 slow
+
 slowImmunity
+
 slowImmunityRemains
+
 slowImmunityUptime
+
 slowRemains
+
 slowUptime
+
 smokeBomb
+
 soulShards
+
 soulShardsDeficit
+
 soulShardsMax
+
 soulShardsPct
+
 speared
+
 specColor
+
 specID
+
 specName
+
 specNameShort
+
 speed
+
 spellId
+
 start
+
 startTimeMS
+
 staticField
+
 stealth
+
 straving
+
 stravingLeft
+
 stravingLeftPending
+
 stravingRight
+
 stravingRightPending
+
 stun
+
 stunBreak
+
 stunDR
+
 stunDRRemains
+
 stunImmunity
+
 stunImmunityRemains
+
 stunImmunityUptime
+
 stunRemains
+
 stunUptime
+
 subtletyRogue
+
 survivalHunter
+
 swimming
+
 tank
+
 tankRole
+
 tapDenied
+
 target
+
 tauren
+
 timeStandingStill
+
 timeToUnit
+
 timeToUnitRaw
+
 totem
+
 trapTravelTime
+
 trinket
+
 trinketRemains
+
 troll
+
 turning
+
 turningLeft
+
 turningRight
+
 type
+
 typeName
+
 undead
+
 unholyDeathknight
+
 untouchableCC
+
 untouchableCCRemains
+
 untouchableCCUptime
+
 uptime
+
 valid
+
 vbcc
+
 vbccRemains
+
 vengeanceDemonhunter
+
 viable
+
 viableEnemy
+
 viableFriend
+
 voidElf
+
 vulpera
+
 warlock
+
 warrior
+
 windwalkerMonk
+
 worgen
+
 x
+
 y
+
 z
+
 zandalariTroll
 
 </details>
@@ -1438,121 +2085,125 @@ zandalariTroll
 ## Full method index
 
 <details>
+
 <summary>58 methods (click to expand)</summary>
 
 angleTo
+
 behind
+
 buff
+
 buffFrom
+
 buffRemains
+
 buffStacks
+
 buffUptime
+
 canCastOverlappingSpell
+
 cooldown
+
 debuff
+
 debuffFrom
+
 debuffRemains
+
 debuffStacks
+
 debuffUptime
+
 distance2DTo
+
 distance2DToPosition
+
 distanceTo
+
 distanceToPosition
+
 enemyTo
+
 facing
+
 facing45
+
 facing90
+
 friendTo
+
 hasMovementFlag
+
 hasTalent
+
 hasTotem
+
 hiddenAura
+
 hiddenAuraFrom
+
 hiddenAuraRemains
+
 hiddenAuraUptime
+
 icewallObstructingLosTo
+
 icewallObstructingLosToPosition
+
 isTarget
+
 isUnit
+
 losOf
+
 losTo
+
 losToPosition
+
 losToPositionRaw
+
 losToRaw
+
 movingAwayFrom
+
 movingTowards
+
 power
+
 powerDeficit
+
 powerMax
+
 powerPct
+
 predictDistance
+
 predictDistance2D
+
 predictDistance2DTo
+
 predictDistanceTo
+
 predictLos
+
 predictPosition
+
 recentlyCast
+
 recentlyCastTime
+
 setFace
+
 SetFacing
+
 setOverlappingSpell
+
 smokebombObstructingLosTo
+
 v2Attackers
 
 </details>
 
 ---
-
-## Notes
-
-- **Player-only APIs** (`gcd`, `mounted`, `powerRegen`) call `vayn.error` or `error()` when used on non-player units.
-- **Non-existent objects**: The `__index` fallback returns safe defaults so rotation code can read properties without nil-checking every field.
-
-
-# Macro System
-You can create custom macros. These are just flags that get set via slashcommand for X amount of seconds.
-
-Registering a macro for 1 Second:
-```lua
-vayn.RegisterMacro("burst", 1)
-```
-
-Using inside of Callbacks:
-```lua
-if not vayn.MacrosQueued["burst"] then return end
-```
-
-Using the Macro ingame:
-```lua
-/username burst
-```
-
-# Humanization
-You can create delays using the integrated delay system:
-
-local delay = vayn.delay(0.2, 0.4, 5)
-
-would create a delay between 0.2 and 0.4 seconds which changes every 5 seconds.
-
-To use it in your code:
-```lua
-if target.buffUptime(123) < delay.now then return end
-```
-
-As alternative there is also a debounce function available:
-
-```lua
-return vayn.debounce(spell.name, vayn.around3.now, 5, function() return spell:Cast(player) end)
-```
-
-It takes 4 arguments:
-
-key - unique string you would like to use, can be anything but shouldn't be reused.
-min - minimum time that should have passed before executing the function.
-reset - timer where the debounce function resets itself and forgets it ever existed.
-func - function that gets executed.
-```lua
-vayn.debounce(key, min, reset, func)
-```
-
-Sometimes this approach is easier, because it does not care for the conditions, but rather tracks time from when the decision was first viable to real execution.
