@@ -264,17 +264,7 @@ Bulk-registers a table of `{ name = fn, ... }`.
 
 ### `spell(name?, ...)`
 
-The `__call` metamethod runs the callback after these guards:
-
-- Returns immediately if `vayn.tickFinished` is already set
-- Spell must be `known`
-- `cd` must be within `vayn.preCastWindow`
-- Must be `usable` (unless `noMana` and `attributes.ignoreResource`)
-- Blocks if player is casting/channeling beyond pre-cast window (unless ignored)
-- Blocks re-casting the same spell while its CD/charges would conflict
-
-On success, sets `vayn.tickFinished = true` for the rest of the tick.
-
+Callbacks are smart, they only run if the spell is even usable.
 ---
 
 ## Casting
@@ -432,7 +422,6 @@ poisonDispell
 radius
 range
 stopMoving
-ToDebugString
 usable
 
 </details>
