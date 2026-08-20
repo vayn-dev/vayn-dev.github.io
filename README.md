@@ -1039,7 +1039,7 @@ vayn.debounce(key, min, reset, func)
 | `func` | Function to execute. |
 
 
-## Integrated Helper Functions
+# Integrated Helper Functions
 
 | Function | Description |
 |---|---|
@@ -1054,11 +1054,11 @@ vayn.debounce(key, min, reset, func)
 | `vayn:BlockMovement()`                       | Temporarily blocks all movement inputs.                   |
 | `vayn:ResumeMovement()`                      | Restores and allows movement inputs again.                |
 
-## Update Ticker
+# Update Callbacks
 
 `vayn.addUpdateCallback(function())` runs before any rotation actor gets invoked, useful for running point based object loops and caching the result for that frame
 
-## Instances
+# Content Tracking
 
 | Function | Description |
 |---|---|
@@ -1071,7 +1071,7 @@ vayn.debounce(key, min, reset, func)
 | `vayn.soloRBG`       | True in solo rated battlegrounds.   |
 | `vayn.soloShuffle`   | True in solo shuffle matches.       |
 
-## Alerts
+# Alerts
 
 | Function | Description |
 |---|---|
@@ -1084,3 +1084,38 @@ vayn.debounce(key, min, reset, func)
 | `vayn.dangerAlert(message, spellId, time)` | Small alert for dangerous situations. |
 | `vayn.burstAlert(message, spellId, time)` | Large alert indicating burst effects. |
 | `vayn.quickAlert(message, spell)` | Shortcut large alert for the provided spell. |
+
+# Events
+
+You have two Options to use the integrated event tracking system:
+
+Option 1: 
+```lua
+vayn.eventTracker:RegisterCLEU(function(args))
+```
+
+```lua
+vayn.eventTracker:RegisterCLEU(function(args)
+    local subEvent = args[2]
+    local sourceGUID = args[4]
+    local destGUID = args[8]
+    local spellID = args[12]
+    local spellName = args[13]
+    
+    if subEvent == "SPELL_CAST_SUCCESS" and spellID and sourceGUID then
+        local unit = vayn.unitManager.get(sourceGUID)
+        if not unit then return end
+        if not unit.exists then return end
+        unit.recentlyCastValues[spellID] = vayn.time
+        unit.recentlyCastValues[spellName] = vayn.time
+    end
+end)
+```
+
+
+Option 2:
+```lua
+vayn.eventTracker:RegisterWoWEvent("PLAYER_ENTERING_WORLD", function)
+```
+
+
