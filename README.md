@@ -1059,6 +1059,7 @@ vayn.debounce(key, min, reset, func)
 `vayn.addUpdateCallback(function())` runs before any rotation actor gets invoked, useful for running point based object loops and caching the result for that frame
 
 ## Instances
+
 | Function | Description |
 |---|---|
 | `vayn.arena`         | True in any arena match.            |
